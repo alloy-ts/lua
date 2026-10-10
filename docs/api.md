@@ -30,19 +30,9 @@ The `@alloy-ts/lua` library wraps the Ottavino Lua 5.4 VM using NAPI-RS.
 #### Global Variable Management
 
 - **`lua.globals(): Globals`**
-  Returns the `Globals` handle for interacting with global variables (`_ENV` / `ctx.globals()`), mirroring Ottavino's Rust API.
+  Returns the `Globals` handle for interacting with global variables (`_ENV` / `ctx.globals()`), mirroring Ottavino's Rust API signature (`ctx.globals().set(ctx, key, val)` / `ctx.globals().get(ctx, key)`).
   - **`globals.get(name: string): unknown`**: Retrieves a global variable from the Lua environment.
-  - **`globals.set(name: string, value: unknown): void`**: Binds a global variable in the Lua environment. Converts primitives, JS objects/arrays to Lua tables, and JS functions to callable Ottavino `Callback`s.
-  * **`globals.registerCallback(name: string, callback: Function): void`**: Registers a JavaScript function as an Ottavino `Callback` in the global environment.
-
-- **`lua.registerCallback(name: string, callback: Function): void`**
-  Convenience alias for `lua.globals().registerCallback(name, callback)`.
-
-- **`lua.setGlobal(name: string, value: unknown): void`**
-  Convenience alias for `lua.globals().set(name, value)`.
-
-- **`lua.getGlobal(name: string): unknown`**
-  Convenience alias for `lua.globals().get(name)`.
+  - **`globals.set(name: string, value: unknown): void`**: Binds a global variable in the Lua environment. Converts primitives, JS objects/arrays to Lua tables, and JS functions to callable Ottavino `Callback` instances.
 
 #### Standard Library Management
 
@@ -78,32 +68,42 @@ export interface GcMetrics {
 
 ## 2. JavaScript <-> Lua Value Conversion
 
-| Lua Value Type       | JavaScript Equivalent | Notes                                                                      |
-| :------------------- | :-------------------- | :------------------------------------------------------------------------- |
-| `nil`                | `undefined`           | `undefined` or `null` converted to `nil` in `setGlobal`.                   |
-| `boolean`            | `boolean`             | Direct primitive mapping.                                                  |
-| `integer`            | `number`              | Mapped to JS `number`. Integer-valued JS numbers convert to Lua `integer`. |
-| `number`             | `number`              | Mapped to JS `number`.                                                     |
-| `string`             | `string`              | UTF-8 lossy conversion from interned Lua strings.                          |
-| `table` (sequential) | `Array`               | Arrays with length > 0 map to JS arrays (1-indexed in Lua).                |
-| `table` (keyed)      | `Object`              | Keyed tables map to plain JS objects.                                      |
-| `function`           | `"[lua function]"`    | JS functions passed via `setGlobal` become callable `Callback`s in Lua.    |
-| `thread`             | `"[lua thread]"`      | Placeholder string.                                                        |
-| `userdata`           | `"[lua userdata]"`    | Placeholder string.                                                        |
+| Lua Value Type       | JavaScript Equivalent | Notes                                                                       |
+| :------------------- | :-------------------- | :-------------------------------------------------------------------------- |
+| `nil`                | `undefined`           | `undefined` or `null` converted to `nil` in `globals().set`.                |
+| `boolean`            | `boolean`             | Direct primitive mapping.                                                   |
+| `integer`            | `number`              | Mapped to JS `number`. Integer-valued JS numbers convert to Lua `integer`.  |
+| `number`             | `number`              | Mapped to JS `number`.                                                      |
+| `string`             | `string`              | UTF-8 lossy conversion from interned Lua strings.                           |
+| `table` (sequential) | `Array`               | Arrays with length > 0 map to JS arrays (1-indexed in Lua).                 |
+| `table` (keyed)      | `Object`              | Keyed tables map to plain JS objects.                                       |
+| `function`           | `"[lua function]"`    | JS functions passed via `globals().set` become callable `Callback`s in Lua. |
+| `thread`             | `"[lua thread]"`      | Placeholder string.                                                         |
+| `userdata`           | `"[lua userdata]"`    | Placeholder string.                                                         |
 
 ---
 
-## 3. Error Handling & Exception Propagation
+## 3. Host Function Callbacks & NAPI Reference Mechanics
 
-1. **Lua Syntax / Compile Errors**:
-   Occur when evaluating syntactically invalid Lua code. Throws a JavaScript `Error` with prefix `Lua compile error: ...`.
+When a JavaScript function is registered into Lua via `lua.globals().set(name, jsFn)`, `@alloy-ts/lua` wraps it in an `ottavino::Callback::from_fn` using the following execution pipeline:
 
-2. **Lua Runtime Errors**:
-   Occur when Lua code calls `error(...)` or performs invalid operations (e.g., calling a non-function). Throws a JavaScript `Error` with prefix `Lua runtime error: ...`.
+1. **NAPI Reference Handling**:
+   The JS function is converted to a persistent NAPI reference (`FunctionRef`) using `js_fn.create_ref()`. This keeps the JS function handle valid across Lua VM execution and garbage collection cycles.
 
-3. **JS Function Callback Exceptions**:
-   - **Caught in Lua**: When a registered JS function throws an exception during Lua execution, Lua's `pcall` / `xpcall` can catch it. `pcall` returns `false` and the error message as a string.
-   - **Uncaught in Lua**: If the exception is not caught by `pcall` within Lua, it propagates out of `lua.eval()` and throws a JavaScript `Error` containing the original JS exception message.
+2. **Stack Parameter Conversion**:
+   When Lua code calls the function, arguments are retrieved from Ottavino's parameter stack (`stack[i]`) and converted from `ottavino::Value` into NAPI `JsValue`s using `ottavino_value_to_js`.
+
+3. **JS Callback Execution**:
+   The JS callback function is invoked synchronously on the main thread via `napi_call_function` with the converted positional arguments.
+
+4. **Stack Return Value Conversion**:
+   The JS return value is converted back into an `ottavino::Value` using `js_to_ottavino_value`. The stack is cleared and the return value is pushed onto the stack via `stack.push_back(lua_res)`.
+
+5. **Error & Exception Propagation**:
+   - If an unhandled exception occurs inside the JS callback during execution, `napi_is_exception_pending` and `napi_get_and_clear_last_exception` intercept the error.
+   - The exception message is extracted and wrapped into an `Err(ottavino::RuntimeError)`.
+   - **In Lua**: If wrapped in Lua `pcall(...)` / `xpcall(...)`, Lua catches the error and `pcall` returns `false` plus the error message string.
+   - **Uncaught in Lua**: The error bubbles out of `lua.eval()` and throws as a JavaScript `Error`.
 
 ---
 
@@ -141,7 +141,7 @@ Ottavino is a stackless, garbage-collected Lua 5.4 VM written in pure Rust built
    Represents a Lua coroutine/thread state containing its own stack, status, and execution frame stack.
 
 5. **`Callback<'gc>` & `Sequence<'gc>`**
-   - `Callback`: Rust-implemented host function callable from Lua.
+   - `Callback`: Rust-implemented host function callable from Lua (`Callback::from_fn(&ctx, |ctx, exec, mut stack| { ... })`).
    - `CallbackReturn`: Dictates executor action after callback invocation (`Return`, `Sequence`, `Call`, `Yield`, `Resume`).
    - `Sequence`: Async/step-driven state machine polled by the executor.
 
@@ -149,7 +149,7 @@ Ottavino is a stackless, garbage-collected Lua 5.4 VM written in pure Rust built
    Lua bytecode functions bound to environment upvalues (`_ENV`).
 
 7. **`Stack<'gc, '_>`**
-   Resizable value stack used for function call arguments and return values.
+   Resizable value stack used for function call arguments and return values (`stack[i]`, `stack.push_back(...)`, `stack.clear()`).
 
 8. **`Table<'gc>` & `UserData<'gc>`**
    Garbage-collected hash/array tables and arbitrary Rust host user data with metatables.
@@ -164,9 +164,9 @@ Comparing our NAPI bindings against Ottavino's capabilities:
 
 - [x] Basic VM lifecycle (`empty`, `core`, `full`, stdlib loading).
 - [x] Uninterrupted execution via `lua.eval()`.
-- [x] Global variables get/set (`setGlobal`, `getGlobal`).
-- [x] Host function callbacks via `setGlobal(name, jsFn)`.
-- [x] Exception propagation between JS and Lua.
+- [x] Global variables get/set via `lua.globals().get()` and `lua.globals().set()`.
+- [x] Host function callbacks via `lua.globals().set(name, jsFn)` backed by `ottavino::Callback::from_fn`.
+- [x] Exception propagation between JS and Lua (`pcall` and JS `try/catch`).
 - [x] GC metrics & explicit collection (`totalMemory`, `gcCollect`, `gcMetrics`).
 - [x] Primitive and nested array/object value marshalling.
 
