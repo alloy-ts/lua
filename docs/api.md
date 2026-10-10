@@ -1,142 +1,173 @@
-# API Reference for `@alloy-ts/lua`
+# `@alloy-ts/lua` API Reference & Ottavino Architecture Mapping
 
-The `@alloy-ts/lua` library exposes native Lua VM bindings built via [NAPI-RS](https://napi.rs/) and [Ottavino](https://github.com/kyren/ottavino) (a pure Rust Lua 5.4 VM).
-
----
-
-## Exports from `dist/index.js` / `@alloy-ts/lua`
-
-- **`Lua`**: The main class providing execution context, variable binding, and VM control.
-- **`GcMetrics`**: Interface describing garbage collector statistics.
-- **`__napiBindingTarget`**: String indicating the loaded binary target (`'native'`, `'wasm32-wasi'`, or `'wasm32-wasip1'`).
+The `@alloy-ts/lua` library exposes native Node.js/TypeScript bindings for the [Ottavino](https://github.com/kyren/ottavino) pure-Rust Lua 5.4 Virtual Machine via [NAPI-RS](https://napi.rs/).
 
 ---
 
-## `Lua` Class
+## Table of Contents
 
-Represents an isolated Lua 5.4 VM execution environment.
+- [1. TypeScript/JavaScript Public NAPI API](#1-typescriptjavascript-public-napi-api)
+  - [Constructors & Static Factory Methods](#constructors--static-factory-methods)
+  - [Code Execution](#code-execution)
+  - [Global Variable Management](#global-variable-management)
+  - [Standard Library Management](#standard-library-management)
+  - [Memory & Garbage Collection](#memory--garbage-collection)
+- [2. Type Conversions (JS ↔ Lua)](#2-type-conversions-js--lua)
+- [3. Ottavino Rust Crate API Mapping](#3-ottavino-rust-crate-api-mapping)
+  - [Ottavino Core Types & NAPI Mapping Table](#ottavino-core-types--napi-mapping-table)
+  - [Detailed Breakdown of Ottavino Internal Types](#detailed-breakdown-of-ottavino-internal-types)
 
-```typescript
-import { Lua } from "@alloy-ts/lua";
-```
+---
+
+## 1. TypeScript/JavaScript Public NAPI API
 
 ### Constructors & Static Factory Methods
 
 #### `new Lua()`
 
 - **Returns**: `Lua`
-- Creates a new `Lua` instance with the full standard library loaded (base, coroutine, math, string, table, I/O).
+- Instantiates a new Lua VM with the full standard library loaded (`base`, `coroutine`, `math`, `string`, `table`, `io`).
 
 #### `Lua.full(): Lua`
 
 - **Returns**: `Lua`
-- Static factory method that instantiates a Lua VM with the full standard library loaded.
+- Factory method that instantiates a Lua VM with the full standard library loaded.
 
 #### `Lua.core(): Lua`
 
 - **Returns**: `Lua`
-- Static factory method that instantiates a Lua VM with core standard libraries loaded (base, coroutine, math, string, table) without I/O.
+- Factory method that instantiates a Lua VM with core standard libraries loaded (`base`, `coroutine`, `math`, `string`, `table`), excluding `io`.
 
 #### `Lua.empty(): Lua`
 
 - **Returns**: `Lua`
-- Static factory method that instantiates an isolated, empty Lua VM with no standard libraries loaded.
+- Factory method that instantiates a bare Lua VM with no standard libraries loaded.
 
 ---
 
-### Instance Methods
+### Code Execution
 
-#### `eval(code: string): unknown`
+#### `lua.eval(code: string): unknown`
 
-Compiles and executes a Lua code string in the VM environment, returning the result as a JavaScript value.
+Compiles and executes a Lua code string, returning the resulting value as a JavaScript value.
 
-- **Parameters**: `code` (`string`) — Lua source code string to evaluate.
-- **Returns**: `unknown` — The converted JavaScript representation of the evaluated Lua expression (or `undefined` if no value is returned).
+- **Parameters**: `code` (`string`) — Lua code string to execute.
+- **Returns**: `unknown` — Evaluated result converted to JavaScript primitives/objects.
 - **Throws**:
-  - `Lua compile error: ...` if compilation or syntax parsing fails.
-  - `Lua runtime error: ...` if a runtime error occurs during execution.
+  - `Lua compile error: ...` if compilation fails.
+  - `Lua runtime error: ...` if execution fails during VM run.
 
-#### `setGlobal(name: string, value: unknown): void`
+---
 
-Binds or sets a global variable in the Lua VM environment.
+### Global Variable Management
+
+#### `lua.setGlobal(name: string, value: unknown): void`
+
+Binds a global variable in the Lua VM environment.
 
 - **Parameters**:
-  - `name` (`string`) — Name of the global variable in Lua.
-  - `value` (`unknown`) — JavaScript value to assign. JavaScript primitives and objects are automatically converted to corresponding Lua types.
+  - `name` (`string`) — Global variable name.
+  - `value` (`unknown`) — JS primitive or object value converted to Lua.
 
-#### `getGlobal(name: string): unknown`
+#### `lua.getGlobal(name: string): unknown`
 
-Retrieves the value of a global variable from the Lua VM environment.
+Retrieves a global variable from the Lua VM environment.
 
-- **Parameters**: `name` (`string`) — Name of the global variable.
-- **Returns**: `unknown` — Converted JavaScript representation of the Lua global variable (or `undefined` if not set / `nil`).
+- **Parameters**: `name` (`string`) — Global variable name.
+- **Returns**: `unknown` — Value converted from Lua to JavaScript (or `undefined` if unset/`nil`).
 
-#### `loadCore(): void`
+---
 
-Loads the core standard libraries (`base`, `coroutine`, `math`, `string`, `table`) into an existing Lua VM context. Useful when starting from `Lua.empty()`.
+### Standard Library Management
 
-#### `loadIo(): void`
+#### `lua.loadCore(): void`
 
-Loads the `io` (I/O) standard library into an existing Lua VM context.
+Loads core standard libraries (`base`, `coroutine`, `math`, `string`, `table`) into an existing Lua state.
 
-#### `totalMemory(): number`
+#### `lua.loadIo(): void`
 
-Returns the total memory used by the Lua VM context in bytes.
+Loads the `io` (I/O) standard library into an existing Lua state.
 
-- **Returns**: `number` — Total memory allocated in bytes.
+---
 
-#### `gcCollect(): void`
+### Memory & Garbage Collection
+
+#### `lua.totalMemory(): number`
+
+Returns total memory tracked by the Lua VM allocator in bytes.
+
+- **Returns**: `number` — Memory consumption in bytes.
+
+#### `lua.gcCollect(): void`
 
 Triggers a manual full garbage collection cycle inside the Lua VM.
 
-#### `gcMetrics(): GcMetrics`
+#### `lua.gcMetrics(): GcMetrics`
 
-Retrieves the current garbage collection metrics snapshot.
+Retrieves a snapshot of garbage collector metrics.
 
-- **Returns**: `GcMetrics` object containing `totalAllocation` and `allocationDebt`.
-
----
-
-## `GcMetrics` Interface
-
-Describes the garbage collector memory statistics.
-
-```typescript
-export interface GcMetrics {
-  /** Total bytes tracked by the allocator. */
-  totalAllocation: number;
-  /** Current allocation debt. */
-  allocationDebt: number;
-}
-```
+- **Returns**: `GcMetrics` (`{ totalAllocation: number, allocationDebt: number }`).
 
 ---
 
-## Type Conversions (JS ↔ Lua)
+## 2. Type Conversions (JS ↔ Lua)
 
-### JavaScript to Lua (`setGlobal`)
+### JS to Lua (`setGlobal`)
 
-| JavaScript / TypeScript Type | Converted Lua Type             |
-| :--------------------------- | :----------------------------- |
-| `undefined` / `null`         | `nil`                          |
-| `boolean`                    | `boolean`                      |
-| `number` (integer)           | `integer`                      |
-| `number` (float)             | `number` (float)               |
-| `string`                     | `string`                       |
-| `Array`                      | Sequential `table` (1-indexed) |
-| Plain `Object`               | Keyed `table`                  |
+- `undefined` / `null` → `nil`
+- `boolean` → `boolean`
+- `number` (integer) → `integer`
+- `number` (float) → `number` (float)
+- `string` → `string`
+- `Array` → Sequential 1-indexed `table`
+- Plain `Object` → Keyed `table`
 
-### Lua to JavaScript (`eval` / `getGlobal`)
+### Lua to JS (`eval` / `getGlobal`)
 
-| Lua Type                          | Converted JavaScript / TypeScript Value |
-| :-------------------------------- | :-------------------------------------- |
-| `nil`                             | `undefined`                             |
-| `boolean`                         | `boolean`                               |
-| `integer`                         | `number`                                |
-| `float`                           | `number`                                |
-| `string`                          | `string`                                |
-| `table` (sequential / length > 0) | `Array`                                 |
-| `table` (keyed / empty)           | `Object`                                |
-| `function`                        | `"[lua function]"` (placeholder string) |
-| `thread`                          | `"[lua thread]"` (placeholder string)   |
-| `userdata`                        | `"[lua userdata]"` (placeholder string) |
+- `nil` → `undefined`
+- `boolean` → `boolean`
+- `integer` → `number`
+- `float` → `number`
+- `string` → `string`
+- `table` (sequential / length > 0) → `Array`
+- `table` (keyed / empty) → `Object`
+- `function` → `"[lua function]"` (placeholder string)
+- `thread` → `"[lua thread]"` (placeholder string)
+- `userdata` → `"[lua userdata]"` (placeholder string)
+
+---
+
+## 3. Ottavino Rust Crate API Mapping
+
+The table below maps the internal types and mechanisms provided by the **Ottavino** Rust crate (`ottavino::*`) to how `@alloy-ts/lua` handles them over the NAPI boundary:
+
+### Ottavino Core Types & NAPI Mapping Table
+
+| Ottavino Rust Crate Type  | Description                                                                                                                           | `@alloy-ts/lua` NAPI TS Binding Mapping                                                                                                       |
+| :------------------------ | :------------------------------------------------------------------------------------------------------------------------------------ | :-------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ottavino::Value<'gc>`    | Single enum representing all Lua values (`Nil`, `Boolean`, `Integer`, `Number`, `String`, `Table`, `Function`, `Thread`, `UserData`). | Automatically converted to JS primitives, objects, arrays, or placeholder strings (`"[lua function]"`, `"[lua thread]"`, `"[lua userdata]"`). |
+| `ottavino::Table<'gc>`    | Heterogeneous table storing keyed/sequential elements.                                                                                | Converted recursively from/to JS `Object` and JS `Array`.                                                                                     |
+| `ottavino::Closure<'gc>`  | Compiled Lua bytecode function closure.                                                                                               | Compiled via `Closure::load` inside `lua.eval()`.                                                                                             |
+| `ottavino::Callback<'gc>` | Native Rust callback function exposed to Lua.                                                                                         | Internal stdlib callbacks registered inside Ottavino.                                                                                         |
+| `ottavino::Function<'gc>` | Enum over `Closure` or `Callback`.                                                                                                    | Surfaced in TS as `"[lua function]"`.                                                                                                         |
+| `ottavino::Executor<'gc>` | VM execution state for invoking closures/threads.                                                                                     | Started via `Executor::start(ctx, closure, ())` and driven to completion via `self.inner.finish(&stashed)` in `lua.eval()`.                   |
+| `ottavino::Thread<'gc>`   | Coroutine execution context / thread.                                                                                                 | Surfaced in TS as `"[lua thread]"`.                                                                                                           |
+| `ottavino::UserData<'gc>` | Custom Rust data registered with GC arena.                                                                                            | Surfaced in TS as `"[lua userdata]"`.                                                                                                         |
+| `ottavino::Stash`         | Rooted handle for preserving GC objects across VM entries.                                                                            | Used in `self.inner.enter(...)` and `self.inner.finish(...)` to safely hold executor instances across NAPI boundaries.                        |
+| `ottavino::Context<'gc>`  | Garbage-collected lifetime handle for VM operations.                                                                                  | Passed into closures inside `self.inner.enter(                                                                                                | ctx | ...)` for interning strings and allocating tables. |
+
+---
+
+### Detailed Breakdown of Ottavino Internal Types
+
+1. **`Value<'gc>` Enum**:
+   Ottavino defines `pub enum Value<'gc>` with variants `Nil`, `Boolean`, `Integer`, `Number`, `String`, `Table`, `Function`, `Thread`, and `UserData`. `@alloy-ts/lua` matches against this enum in `ottavino_value_to_js()` in `src/lua.rs`.
+
+2. **`Executor` & `Closure`**:
+   Evaluating Lua strings in `lua.eval()` compiles code into an `ottavino::Closure`, wraps it in an `ottavino::Executor`, stashes it using `ctx.stash()`, and executes it with `self.inner.finish(&stashed)`.
+
+3. **`Table`**:
+   Created via `ottavino::Table::new(&ctx)`. Key-value pairs are iterated using `.iter()` and sequential elements using length index `1..=len`.
+
+4. **`Stash` & `Context`**:
+   Allow safe lifetime management with `gc-arena` across NAPI method invocations.
