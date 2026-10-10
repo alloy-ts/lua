@@ -6,10 +6,10 @@ This module provides TypeScript/JavaScript bindings for embedding and executing 
 
 - **Full Lua Environment**: Run Lua scripts with standard library capabilities.
 - **High Performance**: Native Rust binding using NAPI-RS for minimal overhead.
-- **Seamless JS Interop**: Evaluate Lua expressions and pass TS primitives and structured objects to Lua tables.
-- **Memory & GC Control**: Monitor VM memory usage and trigger manual GC.
-- **API Documentation**: Detailed API reference available in [docs/api.md](./docs/api.md).
-- **Language Guide**: Lua 5.4 basics, stdlib, and `ottavino` features in [docs/lang-guide.md](./docs/lang-guide.md).
+- **Seamless JS Interop**: Evaluate Lua expressions, set global variables (`setGlobal`), and retrieve global variables (`getGlobal`).
+- **Memory & GC Control**: Monitor VM memory usage (`totalMemory`) and trigger manual GC (`gcCollect`).
+- **API Documentation**: Complete API mapping and method reference in [docs/api.md](./docs/api.md).
+- **Language Guide**: Lua 5.4 basics, stdlib, and `ottavino` stackless VM architecture in [docs/lang-guide.md](./docs/lang-guide.md).
 
 ## Installation / Setup
 
@@ -34,7 +34,7 @@ const message = evalLua('return "Hello from " .. "Lua!"');
 console.log(message); // Output: Hello from Lua!
 ```
 
-### Using the `Lua` Class with `setGlobal`
+### Using the `Lua` Class with `setGlobal` & `getGlobal`
 
 ```typescript
 import { Lua } from "./src/main.ts";
@@ -53,6 +53,9 @@ lua.setGlobal("config", {
 // Evaluate expressions using set globals
 const result = lua.eval("return config.host .. ':' .. tostring(config.port)");
 console.log(result); // Output: localhost:8080
+
+// Retrieve global variables directly from JS
+console.log("MAX_ITEMS:", lua.getGlobal("MAX_ITEMS")); // Output: 100
 ```
 
 ## Examples Directory

@@ -130,10 +130,7 @@ fn js_to_ottavino_val<'gc>(
                 let key_str: JsString = unsafe { key_js.cast::<JsString>()? };
                 let key_utf8 = key_str.into_utf8()?;
                 let key_bytes = key_utf8.as_slice();
-                let key_ott = match ctx.intern(key_bytes).into_value(ctx) {
-                    OValue::String(s) => s,
-                    _ => unreachable!(),
-                };
+                let key_ott = ctx.intern(key_bytes).into_value(ctx);
 
                 let val_js: Unknown = unsafe {
                     let mut prop_raw = std::ptr::null_mut();
@@ -232,10 +229,7 @@ impl Lua {
                 }
             };
 
-            let name_key = match ctx.intern(name.as_bytes()).into_value(ctx) {
-                OValue::String(s) => s,
-                _ => unreachable!(),
-            };
+            let name_key = ctx.intern(name.as_bytes()).into_value(ctx);
             let _ = globals.set(ctx, name_key, lua_val);
         });
 
@@ -244,6 +238,28 @@ impl Lua {
         }
 
         Ok(())
+    }
+
+    /// Get a global variable from the Lua environment converted to a JS primitive value.
+    #[napi(js_name = "getGlobal")]
+    pub fn get_global<'a>(&mut self, env: &'a Env, name: String) -> napi::Result<Unknown<'a>> {
+        let mut res_js_val = JsVal::Nil;
+
+        self.inner.enter(|ctx| {
+            let key = ctx.intern(name.as_bytes());
+            let val = ctx.globals().get_value(ctx, key);
+
+            res_js_val = match val {
+                OValue::Nil => JsVal::Nil,
+                OValue::Boolean(b) => JsVal::Boolean(b),
+                OValue::Integer(i) => JsVal::Integer(i),
+                OValue::Number(f) => JsVal::Number(f),
+                OValue::String(s) => JsVal::String(s.as_bytes().to_vec()),
+                _ => JsVal::Nil,
+            };
+        });
+
+        js_val_to_unknown(env, res_js_val)
     }
 
     /// Evaluate a Lua script/expression string and return the result value converted to JS.

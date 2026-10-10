@@ -42,3 +42,16 @@ test("eval handles runtime/syntax errors properly", () => {
   expect(() => lua.eval("invalid lua syntax !!!")).toThrow();
   expect(() => lua.eval("error('explicit lua error')")).toThrow();
 });
+
+test("setGlobal and getGlobal manage global primitive variables", () => {
+  const lua = Lua.full();
+
+  lua.setGlobal("myNum", 999);
+  lua.setGlobal("myStr", "hello from JS");
+  lua.setGlobal("myBool", true);
+
+  expect(lua.getGlobal("myNum")).toBe(999);
+  expect(lua.getGlobal("myStr")).toBe("hello from JS");
+  expect(lua.getGlobal("myBool")).toBe(true);
+  expect(lua.getGlobal("nonExistent")).toBeUndefined();
+});

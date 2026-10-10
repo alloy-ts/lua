@@ -1,73 +1,96 @@
-# API Reference
+# API Reference: Ottavino Crate vs. NAPI Bindings
 
-This document provides a full reference for the Lua NAPI bindings exported by `@lib/module` (and `dist/index.js` / `index.js`).
-
----
-
-## `Lua` Class
-
-The primary class for creating, configuring, and executing embedded Lua environments.
-
-### Factory Constructors
-
-#### `Lua.full(): Lua`
-Creates a `Lua` VM instance with all standard library modules loaded (including I/O, math, string, table, coroutine, etc.).
-
-#### `Lua.core(): Lua`
-Creates a `Lua` VM instance with core (non-I/O) standard library modules loaded (`math`, `string`, `table`, `coroutine`). Ideal for sandboxed execution without file or system I/O capabilities.
-
-#### `Lua.empty(): Lua`
-Creates an empty `Lua` VM instance without any standard library preloaded.
+This document provides a complete reference for the Lua NAPI bindings exported by `@lib/module` (`dist/index.js` / `index.js`), along with an architectural mapping comparing the underlying Rust **`ottavino`** (formerly Piccolo) crate APIs to the exposed NAPI methods.
 
 ---
 
-### Instance Methods
+## 1. Summary API Overview & Coverage
 
-#### `eval(code: string): unknown`
-Compiles and executes a Lua script or expression string.
+| Feature Category | Ottavino Rust API | NAPI Method (TypeScript / JS) | Status / Coverage |
+| :--- | :--- | :--- | :--- |
+| **Constructors** | `OLua::full()`, `OLua::core()`, `OLua::empty()` | `Lua.full()`, `Lua.core()`, `Lua.empty()` | **Covered** |
+| **Code Execution** | `Closure::load`, `Executor::start`, `OLua::finish` | `lua.eval(code: string): unknown` | **Covered** |
+| **Global Variables** | `ctx.globals().set(...)` | `lua.setGlobal(name: string, value: unknown): void` | **Covered** |
+| **Global Variable Retrieval** | `ctx.globals().get_value(...)` | `lua.getGlobal(name: string): unknown` | **Covered** |
+| **Standard Libraries** | `OLua::load_core()`, `OLua::load_io()` | `lua.loadCore(): void`, `lua.loadIo(): void` | **Covered** |
+| **Memory Monitoring** | `OLua::total_memory()` | `lua.totalMemory(): number` | **Covered** |
+| **Garbage Collection** | `OLua::gc_collect()` | `lua.gcCollect(): void` | **Covered** |
+| **GC Metrics** | `OLua::gc_metrics()` | `lua.gcMetrics(): GcMetrics` | **Covered** |
+
+---
+
+## 2. NAPI API Reference
+
+### `Lua` Class
+
+The primary class for creating, configuring, and executing embedded Lua environments in Node.js.
+
+#### Constructors
+
+##### `Lua.full(): Lua`
+Instantiates a Lua VM with the full standard library loaded (base, coroutine, math, string, table, I/O).
+
+##### `Lua.core(): Lua`
+Instantiates a Lua VM with core standard libraries loaded (`math`, `string`, `table`, `coroutine`, base functions), isolated from system I/O capabilities.
+
+##### `Lua.empty(): Lua`
+Instantiates an empty, bare-bones Lua VM with no standard libraries preloaded.
+
+---
+
+#### Methods
+
+##### [Code Execution]
+###### `lua.eval(code: string): unknown`
+Compiles and executes the given Lua code string, returning the evaluated result as a native JavaScript value (`number`, `string`, `boolean`, or `undefined` for `nil`).
 - **Parameters:**
-  - `code`: `string` — The Lua source code or expression to evaluate.
-- **Returns:** `unknown` — The return value converted to JavaScript native types (`number`, `string`, `boolean`, or `undefined` for `nil`).
-- **Throws:** Throws a JavaScript `Error` if compilation or runtime execution fails.
+  - `code`: `string` — The Lua code string or expression.
+- **Returns:** `unknown` — The converted return value.
+- **Throws:** Throws a JavaScript `Error` on syntax or execution errors.
 
-#### `setGlobal(name: string, value: unknown): void`
-Sets a global variable or constant in the Lua environment.
+##### [Global Variable Management]
+###### `lua.setGlobal(name: string, value: unknown): void`
+Sets a global variable or constant in the Lua VM environment from a JS primitive or object. Plain JS objects are recursively converted into Lua tables.
 - **Parameters:**
-  - `name`: `string` — Name of the global variable.
-  - `value`: `unknown` — Primitive value (`number`, `string`, `boolean`, `null`/`undefined`) or plain JavaScript object (which is recursively converted into a Lua table).
+  - `name`: `string` — Variable name.
+  - `value`: `unknown` — Value (`number`, `string`, `boolean`, `null`/`undefined`, or plain `object`).
 
-#### `loadCore(): void`
-Dynamically loads the core standard library modules (`math`, `string`, `table`, `coroutine`) into the active Lua environment.
+###### `lua.getGlobal(name: string): unknown`
+Retrieves a global variable from the Lua VM environment, converting it into a JS primitive value.
+- **Parameters:**
+  - `name`: `string` — Variable name to retrieve.
+- **Returns:** `unknown` — The primitive JS value or `undefined` if unset/nil.
 
-#### `loadIo(): void`
-Dynamically loads the I/O standard library modules into the active Lua environment.
+##### [Standard Library Management]
+###### `lua.loadCore(): void`
+Loads core standard libraries (`math`, `string`, `table`, `coroutine`, base) into an existing Lua state.
 
-#### `totalMemory(): number`
-Returns the total memory used by this Lua environment in bytes.
+###### `lua.loadIo(): void`
+Loads I/O standard libraries into an existing Lua state.
 
-#### `gcCollect(): void`
-Triggers a complete garbage collection cycle in the Lua garbage collector.
+##### [Memory & Garbage Collection]
+###### `lua.totalMemory(): number`
+Returns the total memory used by the Lua VM in bytes.
 
-#### `gcMetrics(): GcMetrics`
-Returns a snapshot of the current garbage collection metrics.
+###### `lua.gcCollect(): void`
+Triggers a full garbage collection cycle in the Lua VM.
+
+###### `lua.gcMetrics(): GcMetrics`
+Returns garbage collector metrics.
 - **Returns:** `GcMetrics` (`{ totalAllocation: number, allocationDebt: number }`)
 
 ---
 
-## Helper Functions
+## 3. Helper Functions & Interfaces
 
 ### `evalLua(code: string): unknown`
-Convenience function exported from `src/main.ts` that instantiates a `Lua.full()` VM and evaluates the provided Lua code string.
+Convenience helper function from `src/main.ts` that instantiates a full Lua VM and evaluates the provided Lua script string.
 
----
-
-## Interfaces
-
-### `GcMetrics`
+### `GcMetrics` Interface
 
 ```typescript
 export interface GcMetrics {
-  totalAllocation: number; // Total memory allocated in bytes
+  totalAllocation: number; // Total bytes tracked by GC allocator
   allocationDebt: number;  // Current GC allocation debt
 }
 ```

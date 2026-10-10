@@ -29,6 +29,8 @@ export declare class Lua {
   gcMetrics(): GcMetrics
   /** Set a global variable or constant in the Lua environment from a JS value (primitive or object). */
   setGlobal(name: string, value: unknown): void
+  /** Get a global variable from the Lua environment converted to a JS primitive value. */
+  getGlobal(name: string): unknown
   /** Evaluate a Lua script/expression string and return the result value converted to JS. */
   eval(code: string): unknown
 }
