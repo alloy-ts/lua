@@ -90,12 +90,29 @@ test("Globals handle get and set", () => {
   expect(globals.get("myNum")).toBeUndefined();
 });
 
-test("Globals handle set JS function as callable Lua function", () => {
+test("Globals handle set JS function as callable Lua function with args and return value", () => {
   const lua = Lua.full();
   const globals = lua.globals();
 
-  globals.set("hostCallback", () => "hostResult");
+  let called = false;
+  globals.set("hostCallback", () => {
+    called = true;
+    return "hostResult";
+  });
+
   expect(() => lua.eval("hostCallback()")).not.toThrow();
+  expect(called).toBe(true);
+
+  globals.set("addNumbers", (a: number, b: number) => {
+    return a + b;
+  });
+
+  globals.set("concatStrings", (str1: string, str2: string) => {
+    return str1 + " & " + str2;
+  });
+
+  expect(lua.eval("return addNumbers(15, 27)")).toBe(42);
+  expect(lua.eval("return concatStrings('apples', 'bananas')")).toBe("apples & bananas");
 });
 
 test("Executor step polling and fuel management", () => {

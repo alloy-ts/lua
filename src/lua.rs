@@ -3,7 +3,6 @@ use std::sync::{Arc, Mutex};
 use napi::bindgen_prelude::{
     Env, FromNapiValue, Function as NapiFunction, JsObjectValue, Object, ToNapiValue, ValueType,
 };
-use napi::threadsafe_function::ThreadsafeFunctionCallMode;
 use napi::{Error as NapiError, JsValue, Unknown};
 use napi_derive::napi;
 
@@ -457,12 +456,63 @@ fn js_to_ottavino_value<'gc>(
             Ok(ottavino::Value::String(interned))
         }
         ValueType::Function => {
-            let callback =
-                unsafe { NapiFunction::<(), ()>::from_napi_value(env.raw(), js_val.raw())? };
-            let tsfn = callback.build_threadsafe_function().build()?;
-            let tsfn_arc = Arc::new(tsfn);
-            let cb = ottavino::Callback::from_fn(&ctx, move |_ctx, _exec, _stack| {
-                let _ = tsfn_arc.call((), ThreadsafeFunctionCallMode::Blocking);
+            let mut raw_ref = std::ptr::null_mut();
+            unsafe {
+                napi::sys::napi_create_reference(env.raw(), js_val.raw(), 1, &mut raw_ref);
+            }
+            #[allow(dead_code)]
+            struct SafeRef(napi::sys::napi_ref);
+            unsafe impl Send for SafeRef {}
+            unsafe impl Sync for SafeRef {}
+            let safe_ref = Arc::new(SafeRef(raw_ref));
+
+            let env_raw = env.raw();
+            let cb = ottavino::Callback::from_fn(&ctx, move |ctx, _exec, mut stack| {
+                let mut raw_fn = std::ptr::null_mut();
+                unsafe {
+                    napi::sys::napi_get_reference_value(env_raw, safe_ref.0, &mut raw_fn);
+                }
+                if !raw_fn.is_null() {
+                    let len = stack.len();
+                    let mut js_args = Vec::with_capacity(len);
+                    for i in 0..len {
+                        let arg_val = stack.get(i);
+                        let env_ref = Env::from_raw(env_raw);
+                        if let Ok(js_arg) = ottavino_value_to_js(&env_ref, ctx, arg_val) {
+                            js_args.push(js_arg.raw());
+                        }
+                    }
+
+                    let mut raw_undefined = std::ptr::null_mut();
+                    unsafe {
+                        napi::sys::napi_get_undefined(env_raw, &mut raw_undefined);
+                    }
+
+                    let mut js_result = std::ptr::null_mut();
+                    let status = unsafe {
+                        napi::sys::napi_call_function(
+                            env_raw,
+                            raw_undefined,
+                            raw_fn,
+                            js_args.len(),
+                            js_args.as_ptr(),
+                            &mut js_result,
+                        )
+                    };
+
+                    stack.clear();
+
+                    if status == napi::sys::Status::napi_ok && !js_result.is_null() {
+                        let env_ref = Env::from_raw(env_raw);
+                        let unk = unsafe { Unknown::from_raw_unchecked(env_raw, js_result) };
+                        if let Ok(lua_ret) = js_to_ottavino_value(&env_ref, ctx, unk) {
+                            stack.push_back(lua_ret);
+                        }
+                    }
+                } else {
+                    stack.clear();
+                }
+
                 Ok(ottavino::CallbackReturn::Return)
             });
             Ok(ottavino::Value::Function(cb.into()))
