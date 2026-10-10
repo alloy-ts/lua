@@ -1,7 +1,8 @@
-import console from "node:console";
+import { Lua } from "../index.js";
 
-export const main = () => {
-  return "Hello, world!";
+export { Lua };
+
+export const runLuaScript = (script: string) => {
+  const lua = new Lua();
+  return lua.eval(script);
 };
-
-console.log(main());
