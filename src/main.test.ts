@@ -61,3 +61,33 @@ test("Lua memory and GC methods", () => {
 
   expect(() => lua.gcCollect()).not.toThrow();
 });
+
+test("Lua registerCallback enables host JS function calls from Lua", () => {
+  const lua = new Lua();
+  lua.registerCallback("hostAdd", (a: number, b: number) => a + b);
+  lua.registerCallback("hostMultiply", (a: number, b: number) => a * b);
+
+  expect(lua.eval("return hostAdd(15, 25)")).toBe(40);
+  expect(lua.eval("return hostMultiply(6, 7)")).toBe(42);
+});
+
+test("Lua Executor step-based execution and fuel pacing", () => {
+  const lua = new Lua();
+  const exec = lua.executor(`
+    local sum = 0
+    for i = 1, 100 do
+      sum = sum + i
+    end
+    return sum
+  `);
+
+  // Step with 5 fuel steps (incomplete)
+  const step1 = exec.step(5);
+  expect(step1.done).toBe(false);
+  expect(step1.result).toBeUndefined();
+
+  // Step with sufficient fuel to complete
+  const step2 = exec.step(10000);
+  expect(step2.done).toBe(true);
+  expect(step2.result).toBe(5050);
+});

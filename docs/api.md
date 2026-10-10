@@ -1,11 +1,11 @@
 # API Reference
 
-This document provides a detailed reference for the exported `Lua` class, types, and API coverage provided by the native NAPI module (`dist/index.js`).
+This document provides a detailed reference for the exported `Lua` class, `Executor` class, types, and API coverage provided by the native NAPI module (`dist/index.js`).
 
 ## Exported Members
 
 ```ts
-import { Lua, GcMetrics, __napiBindingTarget } from "@lib/module";
+import { Lua, Executor, StepResult, GcMetrics, __napiBindingTarget } from "@lib/module";
 ```
 
 ---
@@ -26,7 +26,7 @@ Instantiates a Lua VM with core standard libraries loaded (`base`, `coroutine`, 
 
 #### `Lua.empty(): Lua`
 
-Instantiates a bare, empty Lua VM with no standard libraries loaded (for maximum sandboxing).
+Instantiates a bare, empty Lua VM with no standard library modules loaded (for maximum sandboxing).
 
 ---
 
@@ -34,26 +34,31 @@ Instantiates a bare, empty Lua VM with no standard libraries loaded (for maximum
 
 #### `lua.eval(source: string): unknown`
 
-Compiles and executes the given Lua code string, returning the result as a JavaScript value.
+Compiles and executes the given Lua code string to completion, returning the result as a JavaScript value.
 
 - **Parameters**: `source` (string) - The Lua code to execute.
 - **Returns**: `unknown` - The converted JavaScript value corresponding to the return value of the Lua script.
 - **Throws**: JavaScript Error if the Lua code contains syntax errors or runtime exceptions.
 
+#### `lua.registerCallback(name: string, callback: (...args: unknown[]) => unknown): void`
+
+Registers a JavaScript host function as a callable Lua global function.
+
+- **Parameters**:
+  - `name` (string) - The global function name in Lua.
+  - `callback` (function) - The JavaScript function to invoke when called from Lua.
+
+#### `lua.executor(source: string): Executor`
+
+Compiles Lua source code and returns a step-driven `Executor` handle for fuel-metered or cancellable execution.
+
 #### `lua.setGlobal(name: string, value: unknown): void`
 
 Sets a global variable in the Lua VM environment. Converts JavaScript primitives (`boolean`, `number`, `string`, `null`/`undefined`) and complex objects/arrays into corresponding Lua primitives and tables.
 
-- **Parameters**:
-  - `name` (string) - The variable name in Lua.
-  - `value` (unknown) - The value to assign.
-
 #### `lua.getGlobal(name: string): unknown`
 
 Retrieves a global variable from the Lua VM environment as a converted JavaScript value.
-
-- **Parameters**: `name` (string) - The variable name in Lua.
-- **Returns**: `unknown` - The converted JavaScript value.
 
 ---
 
@@ -85,11 +90,29 @@ Returns garbage collector metrics from the arena allocator.
 
 ---
 
-## Interface: `GcMetrics`
+## Class: `Executor`
 
-Represents garbage collector allocation metrics for a `Lua` instance.
+Represents a suspended or running Lua execution state that can be stepped incrementally.
+
+### Methods
+
+#### `step(fuel: number): StepResult`
+
+Executes Lua VM instructions up to `fuel` budget steps.
+
+- **Parameters**: `fuel` (number) - Maximum VM instruction budget.
+- **Returns**: `StepResult` - `{ done: boolean, result?: unknown }`.
+
+---
+
+## Interfaces
 
 ```ts
+export interface StepResult {
+  done: boolean;
+  result?: unknown;
+}
+
 export interface GcMetrics {
   /** Total bytes tracked by the allocator. */
   totalAllocation: number;
@@ -102,16 +125,17 @@ export interface GcMetrics {
 
 ## Ottavino Crate API Coverage Summary
 
-| Ottavino Crate API                       | NAPI Exported Binding      | Coverage Status |
-| :--------------------------------------- | :------------------------- | :-------------- |
-| `OLua::full()` / `OLua::default()`       | `new Lua()` / `Lua.full()` | ✅ Covered      |
-| `OLua::core()`                           | `Lua.core()`               | ✅ Covered      |
-| `OLua::empty()`                          | `Lua.empty()`              | ✅ Covered      |
-| `OLua::load_core()`                      | `lua.loadCore()`           | ✅ Covered      |
-| `OLua::load_io()`                        | `lua.loadIo()`             | ✅ Covered      |
-| `OLua::total_memory()`                   | `lua.totalMemory()`        | ✅ Covered      |
-| `OLua::gc_collect()`                     | `lua.gcCollect()`          | ✅ Covered      |
-| `OLua::gc_metrics()`                     | `lua.gcMetrics()`          | ✅ Covered      |
-| `Closure::load` + `Executor` + `execute` | `lua.eval(code)`           | ✅ Covered      |
-| `Context::globals().set_raw`             | `lua.setGlobal(name, val)` | ✅ Covered      |
-| `Context::globals().get_raw`             | `lua.getGlobal(name)`      | ✅ Covered      |
+| Ottavino Crate API                   | NAPI Exported Binding                    | Coverage Status |
+| :----------------------------------- | :--------------------------------------- | :-------------- |
+| `OLua::full()` / `OLua::default()`   | `new Lua()` / `Lua.full()`               | ✅ Covered      |
+| `OLua::core()`                       | `Lua.core()`                             | ✅ Covered      |
+| `OLua::empty()`                      | `Lua.empty()`                            | ✅ Covered      |
+| `OLua::load_core()`                  | `lua.loadCore()`                         | ✅ Covered      |
+| `OLua::load_io()`                    | `lua.loadIo()`                           | ✅ Covered      |
+| `OLua::total_memory()`               | `lua.totalMemory()`                      | ✅ Covered      |
+| `OLua::gc_collect()`                 | `lua.gcCollect()`                        | ✅ Covered      |
+| `OLua::gc_metrics()`                 | `lua.gcMetrics()`                        | ✅ Covered      |
+| `Callback::from_fn`                  | `lua.registerCallback(name, fn)`         | ✅ Covered      |
+| `Executor::start` + `Executor::step` | `lua.executor(code)` + `exec.step(fuel)` | ✅ Covered      |
+| `Context::globals().set_raw`         | `lua.setGlobal(name, val)`               | ✅ Covered      |
+| `Context::globals().get_raw`         | `lua.getGlobal(name)`                    | ✅ Covered      |

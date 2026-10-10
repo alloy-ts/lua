@@ -4,9 +4,10 @@ This package provides native bindings to embed a Lua 5.4 engine in TypeScript / 
 
 ## Architecture & How It Works
 
-1. **NAPI-RS Bridge**: `napi-rs` generates high-performance C/C++ Node.js native add-ons from Rust. It marshals data directly between V8 / JS values (`Unknown`, `Object`, primitives) and Rust data structures without manual C glue code.
+1. **NAPI-RS Bridge**: `napi-rs` generates high-performance Node.js native add-ons from Rust. It marshals data directly between V8 / JS values (`Unknown`, `Object`, primitives) and Rust data structures without manual C glue code.
 2. **Pure-Rust Lua Engine**: We embed `ottavino`, a pure-Rust implementation of Lua 5.4. It manages Lua execution inside a garbage-collected arena.
 3. **Value Conversion**: JS primitives (`boolean`, `number`, `string`, `null`/`undefined`) and nested objects/arrays automatically convert to corresponding Lua types (`boolean`, `number`, `string`, `nil`, and `table`) and vice-versa.
+4. **Stackless Interpreter & Fuel Pacing**: Long-running Lua execution can be stepped using fuel limits (`Executor.step(fuel)`), enabling pre-emptive concurrency, cancellation, and execution pacing.
 
 ## Usage
 
@@ -37,17 +38,36 @@ const result = lua.eval("return 14 * multiplier"); // 42
 const val = lua.getGlobal("multiplier"); // 3
 ```
 
-### Passing Objects & Tables
+### Registering Host JS Callbacks
 
 ```ts
 const lua = new Lua();
 
-// JS Objects convert to Lua Tables
-lua.setGlobal("user", { name: "Alice", age: 30 });
-const name = lua.eval("return user.name"); // "Alice"
+// Register a JS function reachable from Lua scripts
+lua.registerCallback("hostAdd", (a: number, b: number) => a + b);
 
-// Lua Tables convert back to JS Objects
-const table = lua.eval("return { x = 10, y = 20 }"); // { x: 10, y: 20 }
+const result = lua.eval("return hostAdd(15, 25)"); // 40
+```
+
+### Stepped Execution & Fuel Control
+
+```ts
+const lua = new Lua();
+
+// Create a cancellable, fuel-metered executor
+const exec = lua.executor(`
+  local sum = 0
+  for i = 1, 1000 do
+    sum = sum + i
+  end
+  return sum
+`);
+
+// Step execution with a fuel budget
+let status = exec.step(10); // { done: false, result: undefined }
+
+// Step until completion
+status = exec.step(100000); // { done: true, result: 500500 }
 ```
 
 ### Standard Library Flavors
@@ -66,7 +86,7 @@ luaEmpty.loadCore(); // Dynamically load core stdlib
 
 ## Examples
 
-Run any of the example scripts with `@oxc-node/core`:
+Run example scripts using `@oxc-node/core`:
 
 ```bash
 node --import @oxc-node/core/register examples/primitives.ts
@@ -74,30 +94,13 @@ node --import @oxc-node/core/register examples/object.ts
 node --import @oxc-node/core/register examples/globals.ts
 node --import @oxc-node/core/register examples/function.ts
 node --import @oxc-node/core/register examples/async.ts
+node --import @oxc-node/core/register examples/memory.ts
+node --import @oxc-node/core/register examples/stdlib.ts
 ```
 
 ## Development
 
-- **Install dependencies**:
-
-```bash
-npm install
-```
-
-- **Build the native add-on and package**:
-
-```bash
-npm run build
-```
-
-- **Run unit tests**:
-
-```bash
-npm run test
-```
-
-- **Code check & formatting**:
-
-```bash
-npm run check
-```
+- **Install dependencies**: `npm install`
+- **Build native add-on**: `npm run build`
+- **Run unit tests**: `npm run test`
+- **Code check & formatting**: `npm run check`
