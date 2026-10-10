@@ -1,3 +1,3 @@
 pub mod lua;
 
-pub use lua::{Executor, GcMetrics, Lua, StepResult};
+pub use lua::{Executor, GcMetrics, Globals, Lua, StepResult};

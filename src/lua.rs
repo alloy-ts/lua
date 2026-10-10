@@ -105,6 +105,31 @@ fn js_to_lua_value<'gc>(
             let lua_str = ctx.intern(s.as_bytes());
             Ok(OValue::String(lua_str))
         }
+        ValueType::Function => {
+            let callback: Function = unsafe { val.cast()? };
+            let fn_ref: FunctionRef<(), Unknown> = unsafe { FunctionRef::from_napi_value(env.raw(), callback.raw())? };
+            let env_clone = env.clone();
+            let cb = ottavino::Callback::from_fn(&ctx, move |ctx, _exec, mut stack| {
+                let len = stack.len();
+                let mut js_args = Vec::with_capacity(len);
+                for i in 0..len {
+                    let val = stack.get(i);
+                    let js_val = lua_value_to_js(&env_clone, ctx, val)
+                        .map_err(|e| ottavino::RuntimeError::new(e))?;
+                    js_args.push(js_val);
+                }
+                let function = fn_ref
+                    .borrow_back(&env_clone)
+                    .map_err(|e| ottavino::RuntimeError::new(e))?;
+                let ret_js: Unknown = call_js_function(&env_clone, &function, &js_args)
+                    .map_err(|e| ottavino::RuntimeError::new(e))?;
+                let ret_lua = js_to_lua_value(&env_clone, ctx, ret_js)
+                    .map_err(|e| ottavino::RuntimeError::new(e))?;
+                stack.replace(ctx, ret_lua);
+                Ok(ottavino::CallbackReturn::Return)
+            });
+            Ok(OValue::Function(ottavino::Function::Callback(cb)))
+        }
         ValueType::Object => {
             let obj: Object = unsafe { val.cast()? };
             if obj.is_array()? {
@@ -144,6 +169,42 @@ fn js_to_lua_value<'gc>(
             }
         }
         _ => Ok(OValue::Nil),
+    }
+}
+
+/// Globals table handle for interacting with global variables (_ENV / ctx.globals()).
+#[napi]
+pub struct Globals {
+    inner: Arc<Mutex<OLua>>,
+}
+
+#[napi]
+impl Globals {
+    /// Get a global variable from the Lua environment.
+    #[napi]
+    pub fn get<'a>(&self, env: Env, name: String) -> napi::Result<Unknown<'a>> {
+        let mut lua = self.inner.lock().unwrap();
+        lua.enter(move |ctx| -> napi::Result<Unknown> {
+            let name_str = ctx.intern(name.as_bytes());
+            let lua_val = ctx.globals().get_raw(OValue::String(name_str));
+            lua_value_to_js(&env, ctx, lua_val)
+        })
+    }
+
+    /// Set a global variable in the Lua environment.
+    ///
+    /// Accepts primitives, objects/arrays (converted to Lua tables), and JS functions (converted to Ottavino Callbacks).
+    #[napi(ts_args_type = "name: string, value: any")]
+    pub fn set(&self, env: Env, name: String, value: Unknown) -> napi::Result<()> {
+        let mut lua = self.inner.lock().unwrap();
+        lua.enter(move |ctx| -> napi::Result<()> {
+            let lua_val = js_to_lua_value(&env, ctx, value)?;
+            let name_str = ctx.intern(name.as_bytes());
+            ctx.globals()
+                .set_raw(&ctx, OValue::String(name_str), lua_val)
+                .map_err(|e| napi::Error::from_reason(e.to_string()))?;
+            Ok(())
+        })
     }
 }
 
@@ -262,6 +323,14 @@ impl Lua {
         }
     }
 
+    /// Get the Globals handle for interacting with global variables (_ENV / ctx.globals()).
+    #[napi]
+    pub fn globals(&self) -> Globals {
+        Globals {
+            inner: Arc::clone(&self.inner),
+        }
+    }
+
     /// Create a step-driven Executor for fuel-metered or cancellable execution.
     #[napi]
     pub fn executor(&mut self, source: String) -> napi::Result<Executor> {
@@ -286,40 +355,12 @@ impl Lua {
         &mut self,
         env: Env,
         name: String,
-        callback: Function,
+        callback: Unknown,
     ) -> napi::Result<()> {
-        let fn_ref: FunctionRef<(), Unknown> = unsafe { FunctionRef::from_napi_value(env.raw(), callback.raw())? };
-        let mut lua = self.inner.lock().unwrap();
-        lua.enter(move |ctx| {
-            let cb = ottavino::Callback::from_fn(&ctx, move |ctx, _exec, mut stack| {
-                let len = stack.len();
-                let mut js_args = Vec::with_capacity(len);
-                for i in 0..len {
-                    let val = stack.get(i);
-                    let js_val = lua_value_to_js(&env, ctx, val)
-                        .map_err(|e| ottavino::RuntimeError::new(e))?;
-                    js_args.push(js_val);
-                }
-                let function = fn_ref
-                    .borrow_back(&env)
-                    .map_err(|e| ottavino::RuntimeError::new(e))?;
-                let ret_js: Unknown = call_js_function(&env, &function, &js_args)
-                    .map_err(|e| ottavino::RuntimeError::new(e))?;
-                let ret_lua = js_to_lua_value(&env, ctx, ret_js)
-                    .map_err(|e| ottavino::RuntimeError::new(e))?;
-                stack.replace(ctx, ret_lua);
-                Ok(ottavino::CallbackReturn::Return)
-            });
-            let name_str = ctx.intern(name.as_bytes());
-            ctx.globals()
-                .set_raw(
-                    &ctx,
-                    OValue::String(name_str),
-                    OValue::Function(ottavino::Function::Callback(cb)),
-                )
-                .map_err(|e| napi::Error::from_reason(e.to_string()))?;
-            Ok(())
-        })
+        Globals {
+            inner: Arc::clone(&self.inner),
+        }
+        .set(env, name, callback)
     }
 
     /// Evaluate a string of Lua code and return the result.
@@ -348,27 +389,20 @@ impl Lua {
     }
 
     /// Set a global variable in the Lua state.
-    #[napi]
+    #[napi(ts_args_type = "name: string, value: any")]
     pub fn set_global(&mut self, env: Env, name: String, value: Unknown) -> napi::Result<()> {
-        let mut lua = self.inner.lock().unwrap();
-        lua.enter(move |ctx| -> napi::Result<()> {
-            let lua_val = js_to_lua_value(&env, ctx, value)?;
-            let name_str = ctx.intern(name.as_bytes());
-            ctx.globals()
-                .set_raw(&ctx, OValue::String(name_str), lua_val)
-                .map_err(|e| napi::Error::from_reason(e.to_string()))?;
-            Ok(())
-        })
+        Globals {
+            inner: Arc::clone(&self.inner),
+        }
+        .set(env, name, value)
     }
 
     /// Get a global variable from the Lua state.
     #[napi]
     pub fn get_global(&mut self, env: Env, name: String) -> napi::Result<Unknown<'_>> {
-        let mut lua = self.inner.lock().unwrap();
-        lua.enter(move |ctx| -> napi::Result<Unknown> {
-            let name_str = ctx.intern(name.as_bytes());
-            let lua_val = ctx.globals().get_raw(OValue::String(name_str));
-            lua_value_to_js(&env, ctx, lua_val)
-        })
+        Globals {
+            inner: Arc::clone(&self.inner),
+        }
+        .get(env, name)
     }
 }

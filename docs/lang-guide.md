@@ -34,7 +34,34 @@ local MAX_RETRIES <const> = 5
 
 ---
 
-## 2. Standard Library Overview
+## 2. Globals & Callback Binding Architecture
+
+Global variables and host function callbacks are managed through `lua.globals()`, which maps directly to Ottavino's `ctx.globals()` handle:
+
+```ts
+const lua = new Lua();
+const globals = lua.globals();
+
+// Bind TS values to Lua globals
+globals.set("appName", "EmbeddedLuaApp");
+globals.set("hostCalculate", (a: number, b: number) => a + b);
+
+// Access Lua globals
+console.log(globals.get("appName")); // "EmbeddedLuaApp"
+console.log(lua.eval("return hostCalculate(20, 22)")); // 42
+```
+
+### Callback Construction (`ottavino::Callback::from_fn`)
+
+When a JavaScript function is registered into `globals.set(name, jsFn)`:
+
+1. The JS function is wrapped in a thread-safe `FunctionRef` NAPI handle.
+2. Inside Ottavino's GC arena, an `ottavino::Callback::from_fn` closure is created.
+3. When Lua calls the function, the Callback reads positional arguments off `ottavino::Stack` (`stack.get(i)`), converts them into JS values, executes the JS function, and pushes converted return values back onto the `Stack` (`stack.replace`).
+
+---
+
+## 3. Standard Library Overview
 
 Ottavino provides a modular standard library:
 
@@ -67,7 +94,7 @@ Core functions implicitly available in global scope:
 
 ---
 
-## 3. Cross-Boundary Exception Conversion & Error Handling
+## 4. Cross-Boundary Exception Conversion & Error Handling
 
 Errors flow seamlessly between JavaScript/TypeScript and Lua across the NAPI boundary:
 
@@ -91,10 +118,10 @@ try {
 
 ### 2. JavaScript Callback Errors -> Lua Runtime Errors
 
-When a registered host JavaScript function (`registerCallback`) throws an exception during execution, NAPI catches the exception and converts it into an `ottavino::RuntimeError` inside the VM stack:
+When a registered host JavaScript function (`globals.set`) throws an exception during execution, NAPI catches the exception and converts it into an `ottavino::RuntimeError` inside the VM stack:
 
 ```ts
-lua.registerCallback("validateValue", (val: number) => {
+lua.globals().set("validateValue", (val: number) => {
   if (val < 0) throw new Error("Negative value not allowed!");
   return val;
 });
@@ -112,7 +139,7 @@ If a JS callback error is thrown and Lua does _not_ handle it with `pcall`, the 
 
 ---
 
-## 4. Ottavino (Piccolo) Architecture & Stackless Interpreter Design
+## 5. Ottavino (Piccolo) Architecture & Stackless Interpreter Design
 
 Ottavino is a pure-Rust implementation of Lua 5.4 derived from _Piccolo_.
 
@@ -143,7 +170,7 @@ Standard Lua supports _asymmetric coroutines_ (yielding control only back to the
 
 ---
 
-## 5. The "Big Lie" & C API Limitations vs. Stackless Rust
+## 6. The "Big Lie" & C API Limitations vs. Stackless Rust
 
 In PUC-Rio Lua, yielding from nested C callbacks (a "Lua -> C -> Lua" sandwich like `table.sort` with a Lua comparator) requires complex `lua_callk` / `lua_yieldk` continuation functions because a C `longjmp` destroys the C stack. Most C stdlib functions cannot be safely yielded across.
 
@@ -154,14 +181,14 @@ Ottavino solves this at the architecture level:
 
 ---
 
-## 6. Rust Coroutines, Lua Coroutines, and Snarfing
+## 7. Rust Coroutines, Lua Coroutines, and Snarfing
 
 - **Snarfing**: Incorporating semantics from the host language into the inner embedded language.
 - Ottavino uses `gc-arena` for garbage collection isolation and reifies VM call frames so that Lua garbage collection can take place safely between `enter` mutator calls when no GC pointers exist on the Rust stack.
 
 ---
 
-## 7. Zooming Out: Safety, Isolation, and Sandboxing
+## 8. Zooming Out: Safety, Isolation, and Sandboxing
 
 - **Multiple Isolated VMs**: Multiple `Lua` instances can run concurrently in the same Node.js process without shared global state.
 - **Sandboxing**: By choosing between `Lua.empty()`, `Lua.core()`, and `Lua.full()`, host applications can completely strip file I/O or system access for untrusted script execution.
