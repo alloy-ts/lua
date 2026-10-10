@@ -7,10 +7,9 @@ This library uses [NAPI-RS](https://napi.rs/) and [Ottavino](https://github.com/
 ## Key Features
 
 - **Full Lua 5.4 Environment**: Create sandboxed Lua states with empty, core, or full standard libraries.
+- **Globals API (`lua.globals()`)**: Mirroring Ottavino's `ctx.globals()` Rust API. Automatically converts primitives, JS objects/arrays to Lua tables, and JS functions to callable Ottavino `Callback`s.
 - **Stackless VM Architecture**: Reifies execution state into heap structures driven by polling (`Executor::step`), enabling bounded execution and pre-emptive time slicing.
 - **Eval & Step Execution**: Run scripts synchronously with `eval()` or step through execution using `lua.executor()` with `Fuel` budgets.
-- **JS Callback Registration**: Expose host JS functions into Lua using `lua.registerCallback()`.
-- **Global Variable Binding**: Get and set global variables in the Lua VM directly from TS/JS.
 - **GC & Memory Controls**: Monitor memory consumption (`totalMemory()`), inspect allocation metrics (`gcMetrics()`), and manually trigger garbage collection (`gcCollect()`).
 
 ## Quick Usage Example
@@ -20,16 +19,26 @@ import { Lua } from "@lib/module";
 
 // Create a Lua instance with the full standard library loaded
 const lua = Lua.full();
+const globals = lua.globals();
+
+// Set global variables & host callback functions via Globals API
+globals.set("multiplier", 10);
+globals.set("data", { name: "Lua", active: true });
+globals.set("hostLog", () => {
+  console.log("Logged from Lua!");
+});
 
 // Evaluate Lua expressions and scripts
+lua.eval("hostLog()");
 const result = lua.eval("return 1 + 2 * 3");
 console.log(result); // 7
 
-// Register a JS callback in Lua
-lua.registerCallback("hostLog", () => {
-  console.log("Logged from Lua!");
-});
-lua.eval("hostLog()");
+// Read global variables
+console.log(globals.get("multiplier")); // 10
+
+// Working with Lua tables (returned as JS objects or arrays)
+const arrayResult = lua.eval("return { 10, 20, 30 }");
+console.log(arrayResult); // [10, 20, 30]
 
 // Step-driven execution with fuel budget
 const executor = lua.executor("local sum = 0; for i = 1, 100 do sum = sum + i end; return sum");
@@ -44,10 +53,9 @@ console.log("Executor result:", executor.takeResult(lua)); // 5050
 - `Lua.full()` / `new Lua()`: Creates a VM with full stdlib (including I/O).
 - `Lua.core()`: Creates a VM with core stdlib (no I/O).
 - `Lua.empty()`: Creates an empty VM for strict sandboxing.
+- `lua.globals(): Globals`: Returns the `Globals` handle (`globals.get(name)`, `globals.set(name, val)`).
 - `lua.eval(code: string): unknown`: Evaluates Lua code and converts return value to TS/JS.
 - `lua.executor(code: string): Executor`: Returns a step-driven `Executor` handle.
-- `lua.registerCallback(name, callback)`: Registers a JS host function in Lua.
-- `lua.setGlobal(name, value)` / `lua.getGlobal(name)`: Bidirectional variable getter/setter.
 - `lua.totalMemory()` / `lua.gcCollect()` / `lua.gcMetrics()`: Memory tracking & GC controls.
 
 For detailed documentation, see:
@@ -57,18 +65,18 @@ For detailed documentation, see:
 ## Examples
 
 Check the [`examples/`](./examples/) folder for runnable TypeScript examples:
-- [`examples/variables.ts`](./examples/variables.ts): Defining primitive variables, constants, objects, and metatables.
+- [`examples/variables.ts`](./examples/variables.ts): Defining primitive variables, constants, objects, and metatables via Globals API.
 - [`examples/primitives.ts`](./examples/primitives.ts): Working with numbers, strings, booleans, and nulls.
 - [`examples/object.ts`](./examples/object.ts): Table/object manipulation and OOP patterns.
 - [`examples/function.ts`](./examples/function.ts): Defining and invoking Lua functions.
 - [`examples/executor.ts`](./examples/executor.ts): Step-driven execution and fuel polling with `Executor`.
-- [`examples/callback.ts`](./examples/callback.ts): Registering JS host functions as Lua callbacks.
+- [`examples/callback.ts`](./examples/callback.ts): Registering JS host functions as Lua callbacks using `globals.set()`.
 - [`examples/memory.ts`](./examples/memory.ts): Memory tracking and garbage collection controls.
 - [`examples/stdlib.ts`](./examples/stdlib.ts): Sandboxing and standard library loading.
 
 Run any example using `@oxc-node/core`:
 ```bash
-node --import @oxc-node/core/register examples/executor.ts
+node --import @oxc-node/core/register examples/variables.ts
 ```
 
 ## Development

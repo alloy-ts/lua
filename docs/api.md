@@ -1,6 +1,6 @@
 # Embedded Lua API Reference (`dist/index.js`)
 
-This document provides a comprehensive API reference for the exported `Lua` class, `Executor` handle, and types provided by `@lib/module` (`dist/index.js` / `dist/index.d.ts`).
+This document provides a comprehensive API reference for the exported `Lua` class, `Globals` handle, `Executor` handle, and types provided by `@lib/module` (`dist/index.js` / `dist/index.d.ts`).
 
 ---
 
@@ -10,14 +10,15 @@ This document provides a comprehensive API reference for the exported `Lua` clas
 - [Importing](#importing)
 - [Class: `Lua`](#class-lua)
   - [Constructors & Factories](#constructors--factories)
+  - [Globals Handle](#globals-handle)
+    - [`lua.globals()`](#luaglobals)
   - [Execution & Stepping](#execution--stepping)
     - [`lua.eval(code)`](#luaevalcode)
     - [`lua.executor(code)`](#luaexecutorcode)
-  - [Host Functions & Callbacks](#host-functions--callbacks)
-    - [`lua.registerCallback(name, callback)`](#luaregistercallbackname-callback)
-  - [Global Variables & State](#global-variables--state)
+  - [Convenience Aliases](#convenience-aliases)
     - [`lua.setGlobal(name, value)`](#luasetglobalname-value)
     - [`lua.getGlobal(name)`](#luagetglobalname)
+    - [`lua.registerCallback(name, callback)`](#luaregistercallbackname-callback)
   - [Standard Library Controls](#standard-library-controls)
     - [`lua.loadCore()`](#lualoadcore)
     - [`lua.loadIo()`](#lualoadio)
@@ -25,6 +26,9 @@ This document provides a comprehensive API reference for the exported `Lua` clas
     - [`lua.totalMemory()`](#luatotalmemory)
     - [`lua.gcCollect()`](#luagccollect)
     - [`lua.gcMetrics()`](#luagcmetrics)
+- [Class: `Globals`](#class-globals)
+  - [`globals.get(name)`](#globalsgetname)
+  - [`globals.set(name, value)`](#globalssetname-value)
 - [Class: `Executor`](#class-executor)
   - [`executor.step(lua, fuel)`](#executorsteplua-fuel)
   - [`executor.takeResult(lua)`](#executortakeresultlua)
@@ -34,7 +38,7 @@ This document provides a comprehensive API reference for the exported `Lua` clas
 
 ## Overview
 
-The `Lua` class represents an isolated Lua 5.4 Virtual Machine instance running natively inside Node.js via NAPI. Execution can be run to completion using `eval()` or stepped incrementally using `Executor`.
+The `Lua` class represents an isolated Lua 5.4 Virtual Machine instance running natively inside Node.js via NAPI. Global variables (`_ENV` / `ctx.globals()`) are accessed through the `Globals` handle returned by `lua.globals()`.
 
 ---
 
@@ -45,6 +49,20 @@ The `Lua` class represents an isolated Lua 5.4 Virtual Machine instance running 
 * `new Lua()` / `Lua.full()`: Creates a VM with full stdlib (including I/O).
 * `Lua.core()`: Creates a VM with core stdlib (no I/O).
 * `Lua.empty()`: Creates an empty VM for strict sandboxing.
+
+---
+
+### Globals Handle
+
+#### `lua.globals()`
+* **Signature**: `globals(): Globals`
+* **Description**: Returns the [`Globals`](#class-globals) handle for interacting with global variables (`_ENV` / `ctx.globals()`), mirroring Ottavino's Rust API.
+* **Example**:
+  ```typescript
+  const globals = lua.globals();
+  globals.set("appName", "MyService");
+  console.log(globals.get("appName")); // "MyService"
+  ```
 
 ---
 
@@ -60,18 +78,30 @@ The `Lua` class represents an isolated Lua 5.4 Virtual Machine instance running 
 
 ---
 
-### Host Functions & Callbacks
+### Convenience Aliases
 
-#### `lua.registerCallback(name, callback)`
-* **Signature**: `registerCallback(name: string, callback: Function): void`
-* **Description**: Registers a JavaScript function as a global Callback in the Lua environment.
+* `lua.getGlobal(name: string): unknown`: Alias for `lua.globals().get(name)`.
+* `lua.setGlobal(name: string, value: unknown): void`: Alias for `lua.globals().set(name, value)`.
+* `lua.registerCallback(name: string, callback: Function): void`: Alias for `lua.globals().set(name, callback)`.
 
 ---
 
-### Global Variables & State
+## Class: `Globals`
 
-* `lua.setGlobal(name: string, value: unknown): void`
-* `lua.getGlobal(name: string): unknown`
+The `Globals` class mirrors Ottavino's `ctx.globals()` API in Rust.
+
+#### `globals.get(name)`
+* **Signature**: `get(name: string): unknown`
+* **Parameters**:
+  * `name`: `string` — The name of the global variable to retrieve.
+* **Returns**: `unknown` — The converted JavaScript value.
+
+#### `globals.set(name, value)`
+* **Signature**: `set(name: string, value: unknown): void`
+* **Parameters**:
+  * `name`: `string` — The name of the global variable to set.
+  * `value`: `unknown` — The JavaScript value (primitive, object, array, or function) to bind.
+* **Note**: Passing a JavaScript function automatically converts it into a callable Ottavino `Callback` in Lua!
 
 ---
 

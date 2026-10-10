@@ -2,6 +2,7 @@ import { Lua } from "../index.js";
 
 // Initialize a Lua 5.4 VM instance
 const lua = Lua.full();
+const globals = lua.globals();
 
 console.log("==================================================");
 console.log("1. Defining Global Lua Functions from TS/JS");
@@ -24,13 +25,13 @@ lua.eval(`
 `);
 
 // Invoke global Lua functions from TS by setting argument globals or evaluating function call expressions
-lua.setGlobal("arg1", 15);
-lua.setGlobal("arg2", 27);
+globals.set("arg1", 15);
+globals.set("arg2", 27);
 const sumResult = lua.eval("return add(arg1, arg2)");
 console.log("add(15, 27) result in Lua:", sumResult);
 
-lua.setGlobal("userName", "Alice");
-lua.setGlobal("userTitle", "Dr.");
+globals.set("userName", "Alice");
+globals.set("userTitle", "Dr.");
 const greeting = lua.eval("return greet(userName, userTitle)");
 console.log("greet('Alice', 'Dr.') result in Lua:", greeting);
 
@@ -52,7 +53,7 @@ lua.eval(`
   end
 `);
 
-lua.setGlobal("cartData", {
+globals.set("cartData", {
   user: "Bob",
   items: [
     { name: "Laptop", price: 999.99, quantity: 1 },
@@ -95,8 +96,8 @@ lua.eval(`
   end
 `);
 
-lua.setGlobal("a", 10);
-lua.setGlobal("b", 0);
+globals.set("a", 10);
+globals.set("b", 0);
 
 try {
   lua.eval("return safeDivide(a, b)");

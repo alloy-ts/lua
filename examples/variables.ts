@@ -2,29 +2,30 @@ import { Lua } from "../index.js";
 
 // Initialize a Lua 5.4 VM instance
 const lua = Lua.full();
+const globals = lua.globals();
 
 console.log("==================================================");
-console.log("1. Defining Lua Primitive Variables from TS/JS");
+console.log("1. Defining Lua Primitive Variables via Globals API");
 console.log("==================================================");
 
 // Numbers (integers & floats)
-lua.setGlobal("MAX_CONNECTIONS", 100);
-lua.setGlobal("TIMEOUT_SEC", 2.5);
+globals.set("MAX_CONNECTIONS", 100);
+globals.set("TIMEOUT_SEC", 2.5);
 
 // Strings
-lua.setGlobal("APP_NAME", "EmbeddedLuaService");
+globals.set("APP_NAME", "EmbeddedLuaService");
 
 // Booleans
-lua.setGlobal("DEBUG_MODE", true);
+globals.set("DEBUG_MODE", true);
 
 // Null / Undefined -> Lua nil
-lua.setGlobal("OPTIONAL_CONFIG", null);
+globals.set("OPTIONAL_CONFIG", null);
 
-console.log("APP_NAME from Lua:", lua.getGlobal("APP_NAME"));
-console.log("MAX_CONNECTIONS from Lua:", lua.getGlobal("MAX_CONNECTIONS"));
-console.log("TIMEOUT_SEC from Lua:", lua.getGlobal("TIMEOUT_SEC"));
-console.log("DEBUG_MODE from Lua:", lua.getGlobal("DEBUG_MODE"));
-console.log("OPTIONAL_CONFIG from Lua:", lua.getGlobal("OPTIONAL_CONFIG"));
+console.log("APP_NAME from Lua:", globals.get("APP_NAME"));
+console.log("MAX_CONNECTIONS from Lua:", globals.get("MAX_CONNECTIONS"));
+console.log("TIMEOUT_SEC from Lua:", globals.get("TIMEOUT_SEC"));
+console.log("DEBUG_MODE from Lua:", globals.get("DEBUG_MODE"));
+console.log("OPTIONAL_CONFIG from Lua:", globals.get("OPTIONAL_CONFIG"));
 
 // Access primitives inside Lua
 const statusReport = lua.eval(`
@@ -58,7 +59,7 @@ lua.eval(`
   define_constant("PI", 3.14159265359)
 `);
 
-console.log("Constant PI retrieved from Lua:", lua.getGlobal("PI"));
+console.log("Constant PI retrieved from Lua:", globals.get("PI"));
 console.log("Circle area calculated in Lua:", lua.eval("return PI * (10 ^ 2)"));
 
 console.log("\n==================================================");
@@ -88,7 +89,7 @@ const userProfile: UserProfile = {
 };
 
 // Expose TS object to Lua global 'user'
-lua.setGlobal("user", userProfile);
+globals.set("user", userProfile);
 
 console.log("Property 'user.name' from Lua:", lua.eval("return user.name"));
 console.log("Array element 'user.roles[2]' from Lua (1-based):", lua.eval("return user.roles[2]"));
@@ -105,7 +106,7 @@ lua.eval(`
 `);
 
 // Retrieve modified object back in TypeScript
-const updatedUser = lua.getGlobal("user");
+const updatedUser = globals.get("user");
 console.log("Updated User object retrieved back in TS:", updatedUser);
 
 console.log("\n==================================================");
@@ -128,7 +129,7 @@ lua.eval(`
   end
 `);
 
-lua.setGlobal("personData", { name: "Bob", score: 95 });
+globals.set("personData", { name: "Bob", score: 95 });
 const greeting = lua.eval(`
   local p = Person.new(personData)
   return p:greet()

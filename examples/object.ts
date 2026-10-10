@@ -2,6 +2,7 @@ import { Lua } from "../index.js";
 
 // Initialize a Lua 5.4 VM instance
 const lua = Lua.full();
+const globals = lua.globals();
 
 console.log("=== Defining Lua Objects from JS/TS Objects ===");
 
@@ -29,7 +30,7 @@ const userProfile: UserProfile = {
 };
 
 // Expose JS object directly as a Lua global table
-lua.setGlobal("user", userProfile);
+globals.set("user", userProfile);
 
 console.log("Original User Object set to Lua global 'user':", userProfile);
 
@@ -59,7 +60,7 @@ lua.eval(`
   user.status = "active"
 `);
 
-const updatedUser = lua.getGlobal("user");
+const updatedUser = globals.get("user");
 console.log("\nUpdated User Object retrieved from Lua:", updatedUser);
 
 // 5. Creating OOP-style Lua objects with methods from TS data
@@ -80,7 +81,7 @@ lua.eval(`
 `);
 
 // Pass JS object to Lua constructor function
-lua.setGlobal("initialData", { name: "Bob", score: 95 });
+globals.set("initialData", { name: "Bob", score: 95 });
 const greeting = lua.eval(`
   local p = Person.new(initialData)
   return p:greet()

@@ -62,29 +62,40 @@ test("eval complex data structures", () => {
   });
 });
 
-test("globals set and get", () => {
+test("Globals handle get and set", () => {
   const lua = Lua.full();
+  const globals = lua.globals();
 
-  // Set primitive globals from JS
-  lua.setGlobal("myNum", 42);
-  expect(lua.getGlobal("myNum")).toBe(42);
+  expect(globals).toBeDefined();
+
+  // Set primitive globals via Globals handle
+  globals.set("myNum", 42);
+  expect(globals.get("myNum")).toBe(42);
   expect(lua.eval("return myNum * 2")).toBe(84);
 
-  lua.setGlobal("myStr", "embedded lua");
-  expect(lua.getGlobal("myStr")).toBe("embedded lua");
+  globals.set("myStr", "embedded lua");
+  expect(globals.get("myStr")).toBe("embedded lua");
   expect(lua.eval("return myStr .. ' rocks'")).toBe("embedded lua rocks");
 
-  // Set objects/arrays from JS
-  lua.setGlobal("config", { port: 8080, host: "localhost" });
+  // Set objects/arrays via Globals handle
+  globals.set("config", { port: 8080, host: "localhost" });
   expect(lua.eval("return config.port")).toBe(8080);
   expect(lua.eval("return config.host")).toBe("localhost");
 
-  lua.setGlobal("items", [100, 200, 300]);
+  globals.set("items", [100, 200, 300]);
   expect(lua.eval("return items[1] + items[2] + items[3]")).toBe(600);
 
   // Unset global (set to null/undefined)
-  lua.setGlobal("myNum", null);
-  expect(lua.getGlobal("myNum")).toBeUndefined();
+  globals.set("myNum", null);
+  expect(globals.get("myNum")).toBeUndefined();
+});
+
+test("Globals handle set JS function as callable Lua function", () => {
+  const lua = Lua.full();
+  const globals = lua.globals();
+
+  globals.set("hostCallback", () => "hostResult");
+  expect(() => lua.eval("hostCallback()")).not.toThrow();
 });
 
 test("Executor step polling and fuel management", () => {
@@ -101,15 +112,6 @@ test("Executor step polling and fuel management", () => {
 
   expect(finished).toBe(true);
   expect(executor.takeResult(lua)).toBe(5050);
-});
-
-test("registerCallback host functions in Lua", () => {
-  const lua = Lua.full();
-  lua.registerCallback("hostLog", () => {
-    return "logged";
-  });
-
-  expect(() => lua.eval("hostLog('hello from lua')")).not.toThrow();
 });
 
 test("memory tracking and garbage collection", () => {

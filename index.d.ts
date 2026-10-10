@@ -20,6 +20,17 @@ export declare class Executor {
   takeResult(lua: Lua): unknown
 }
 
+/** A handle for interacting with global variables in the Lua environment (`_ENV` / `ctx.globals()`). */
+export declare class Globals {
+  /** Get a global variable from the Lua environment by name. */
+  get(name: string): unknown
+  /**
+   * Set/bind a global variable in the Lua environment by name.
+   * Automatically converts primitives, objects, arrays, and JS functions into Lua types.
+   */
+  set(name: string, value: unknown): void
+}
+
 /** A Lua execution environment exported to JavaScript/TypeScript via NAPI. */
 export declare class Lua {
   /** Create a new `Lua` instance with the full stdlib loaded. */
@@ -30,6 +41,8 @@ export declare class Lua {
   static core(): Lua
   /** Create a `Lua` instance with the full stdlib loaded. */
   static full(): Lua
+  /** Returns the `Globals` handle for interacting with global variables (`_ENV` / `ctx.globals()`). */
+  globals(): Globals
   /** Load the core stdlib (base, coroutine, math, string, table). */
   loadCore(): void
   /** Load the I/O stdlib. */
@@ -44,11 +57,11 @@ export declare class Lua {
   eval(code: string): unknown
   /** Create an `Executor` handle to step through Lua script execution with fuel budgets. */
   executor(code: string): Executor
-  /** Get a global variable from Lua environment by name. */
+  /** Convenience alias for `globals().get(name)`. */
   getGlobal(name: string): unknown
-  /** Set a global variable in Lua environment by name. */
+  /** Convenience alias for `globals().set(name, value)`. */
   setGlobal(name: string, value: unknown): void
-  /** Register a JavaScript function as a global Callback in Lua. */
+  /** Convenience alias for `globals().set(name, callback)`. */
   registerCallback(name: string, callback: (...args: any[]) => any): void
 }
 

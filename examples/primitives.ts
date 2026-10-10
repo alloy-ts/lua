@@ -2,35 +2,36 @@ import { Lua } from "../index.js";
 
 // Initialize a Lua 5.4 VM instance
 const lua = Lua.full();
+const globals = lua.globals();
 
 console.log("=== Defining Lua Variables from JS/TS Primitives ===");
 
 // 1. Numbers (integers & floats)
-lua.setGlobal("MAX_CONNECTIONS", 100);
-lua.setGlobal("TIMEOUT_SEC", 2.5);
+globals.set("MAX_CONNECTIONS", 100);
+globals.set("TIMEOUT_SEC", 2.5);
 
 // 2. Strings
-lua.setGlobal("APP_NAME", "EmbeddedLuaService");
+globals.set("APP_NAME", "EmbeddedLuaService");
 
 // 3. Booleans
-lua.setGlobal("DEBUG_MODE", true);
+globals.set("DEBUG_MODE", true);
 
 // 4. Null / Undefined -> Lua nil
-lua.setGlobal("OPTIONAL_CONFIG", null);
+globals.set("OPTIONAL_CONFIG", null);
 
 // 5. Objects -> Lua Tables
-lua.setGlobal("SERVER_CONFIG", {
+globals.set("SERVER_CONFIG", {
   host: "127.0.0.1",
   port: 8080,
   tls: false,
 });
 
 // 6. Arrays -> Lua Sequential Tables
-lua.setGlobal("ALLOWED_ROLES", ["admin", "editor", "viewer"]);
+globals.set("ALLOWED_ROLES", ["admin", "editor", "viewer"]);
 
-console.log("APP_NAME from Lua:", lua.getGlobal("APP_NAME"));
-console.log("SERVER_CONFIG from Lua:", lua.getGlobal("SERVER_CONFIG"));
-console.log("ALLOWED_ROLES from Lua:", lua.getGlobal("ALLOWED_ROLES"));
+console.log("APP_NAME from Lua:", globals.get("APP_NAME"));
+console.log("SERVER_CONFIG from Lua:", globals.get("SERVER_CONFIG"));
+console.log("ALLOWED_ROLES from Lua:", globals.get("ALLOWED_ROLES"));
 
 // Verify that Lua scripts can access these variables
 const statusReport = lua.eval(`
@@ -66,5 +67,5 @@ lua.eval(`
   define_constant("PI", 3.14159265359)
 `);
 
-console.log("Constant PI from Lua:", lua.getGlobal("PI"));
+console.log("Constant PI from Lua:", globals.get("PI"));
 console.log("Calculating circle area in Lua:", lua.eval("return PI * (10 ^ 2)"));
