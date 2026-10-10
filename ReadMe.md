@@ -9,6 +9,7 @@ This module provides TypeScript/JavaScript bindings for embedding and executing 
 - **Seamless JS Interop**: Evaluate Lua expressions and pass TS primitives and structured objects to Lua tables.
 - **Memory & GC Control**: Monitor VM memory usage and trigger manual GC.
 - **API Documentation**: Detailed API reference available in [docs/api.md](./docs/api.md).
+- **Language Guide**: Lua 5.4 basics, stdlib, and `ottavino` features in [docs/lang-guide.md](./docs/lang-guide.md).
 
 ## Installation / Setup
 
