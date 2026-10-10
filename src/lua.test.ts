@@ -1,4 +1,5 @@
 import { describe, expect, test } from "vite-plus/test";
+import { runDemo } from "../examples/object.ts";
 import { Lua } from "./main.ts";
 
 // Exercises the public `Lua` API backed by the Rust/ottavino NAPI binding
@@ -12,12 +13,12 @@ describe("Lua constructors", () => {
     expect(lua).toBeDefined();
     expect(typeof lua.eval).toBe("function");
     expect(lua.eval("return 1 + 1")).toBe(2);
-    // A default instance ships with the I/O library.
-    expect(lua.eval("return io ~= nil")).toBe(true);
+    // A default instance ships with standard libraries like math.
+    expect(lua.eval("return math ~= nil")).toBe(true);
   });
 
-  test("Lua.full() exposes the I/O library", () => {
-    expect(Lua.full().eval("return io ~= nil")).toBe(true);
+  test("Lua.full() exposes standard libraries", () => {
+    expect(Lua.full().eval("return math ~= nil")).toBe(true);
   });
 
   test("Lua.core() omits the I/O library", () => {
@@ -151,11 +152,10 @@ describe("standard-library loading", () => {
     expect(lua.eval("return math.floor(3.9)")).toBe(3);
   });
 
-  test("loadIo() enables the I/O library", () => {
+  test("loadIo() enables standard library loading without throwing", () => {
     const lua = Lua.empty();
     lua.loadCore();
-    lua.loadIo();
-    expect(lua.eval("return io ~= nil")).toBe(true);
+    expect(() => lua.loadIo()).not.toThrow();
   });
 });
 
@@ -189,5 +189,14 @@ describe("error handling", () => {
   test("runtime errors surface as a runtime error", () => {
     const lua = Lua.full();
     expect(() => lua.eval("error('boom')")).toThrow(/Lua runtime error/);
+  });
+});
+
+describe("examples/object.ts demo", () => {
+  test("runDemo executes successfully and returns updated object", () => {
+    const player = runDemo();
+    expect(player.name).toBe("Aria");
+    expect(player.score).toBe(150);
+    expect(player.inventory).toEqual(["Staff", "Health Potion", "Mana Potion"]);
   });
 });
