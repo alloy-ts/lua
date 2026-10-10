@@ -1,4 +1,5 @@
 import { describe, expect, test } from "vite-plus/test";
+import { runFunctionDemo } from "../examples/function.ts";
 import { runGlobalsDemo } from "../examples/globals.ts";
 import { runDemo } from "../examples/object.ts";
 import { Lua } from "./main.ts";
@@ -211,5 +212,15 @@ describe("examples/globals.ts demo", () => {
     expect(res.updatedConfig.db.host).toBe("db.internal");
     expect(res.updatedConfig.tags).toEqual(["primary", "us-east", "ssl"]);
     expect(res.summary).toBe("production:9090 (db.internal)");
+  });
+});
+
+describe("examples/function.ts demo", () => {
+  test("runFunctionDemo executes successfully and returns function results", () => {
+    const res = runFunctionDemo();
+    expect(res.product).toBe(42);
+    expect(res.funcRef).toBe("[lua function]");
+    expect(res.bounds).toEqual({ min: 3, max: 42 });
+    expect(res.doubled).toEqual([2, 4, 6, 8, 10]);
   });
 });
