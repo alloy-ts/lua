@@ -14,18 +14,34 @@ This document provides a comprehensive comparison between the low-level Rust **`
 | **`ottavino::Executor`** | VM engine driving thread execution step-by-step. | Encapsulated in `lua.eval(code)`, driven to completion via `finish`. | **Encapsulated** |
 | **`ottavino::StashedExecutor`** | GC-rooted handle for `Executor` across collection cycles. | Retained internally during script evaluation. | **Encapsulated** |
 | **`ottavino::Value`** | Enum representing Lua types (`Nil`, `Boolean`, `Integer`, `Number`, `String`, `Table`, `Function`, `Thread`, `UserData`). | Automatically converted to/from native JS primitives (`number`, `string`, `boolean`, `undefined`) and JS objects -> Lua tables. | **Exposed via JS Conversion** |
-| **`ottavino::Table`** | Garbage-collected associative table. | JS Objects are converted into `OTable` instances in `globals.set(lua, name, val)`. | **Exposed via JS Objects** |
+| **`ottavino::Table`** | Garbage-collected associative table. | JS Objects are converted into `OTable` instances in `globals.set(lua, name, val)` and returned as native JS objects on retrieval. | **Exposed via JS Objects** |
 | **`ottavino::Closure`** | Compiled Lua function closure bound to an environment. | Compiled & loaded via `Closure::load` inside `eval()`. | **Encapsulated** |
 | **`ottavino::Fuel`** | Step counter for pacing or bounding VM execution. | Managed internally within `Lua::finish` execution steps. | **Encapsulated** |
-| **`ottavino::Callback`** | Host functions written in Rust. | Standard library callbacks preloaded in `full()` & `core()` constructors. | **Encapsulated** |
+| **`ottavino::Callback`** | Host functions written in Rust using `Callback::from_fn`. | Standard library callbacks preloaded in `full()` & `core()` constructors. | **Encapsulated** |
 | **`ottavino::Thread`** | Coroutine execution thread state. | Usable in Lua code via `coroutine` library (`coroutine.create`, `resume`, `yield`). | **Exposed via Lua Coroutines** |
-| **`ottavino::Stack`** | Stack frame storage for function call parameters and returns. | Managed internally during closure/executor execution. | **Encapsulated** |
+| **`ottavino::Stack`** | Stack frame storage for function call parameters (`stack.get(idx)`) and returns (`stack.push(val)`). | Managed internally during closure/executor execution. | **Encapsulated** |
 | **`ottavino::UserData`** | Host-provided opaque data bound to Lua GC. | Internal VM data structures. | **Encapsulated** |
 | **`gc_arena::Metrics`** | Garbage collection memory statistics. | Exposed via `lua.gcMetrics()` (`GcMetrics`) and `lua.totalMemory()`. | **Exposed** |
 
 ---
 
-## 2. Error Handling & Exception Boundaries
+## 2. Host Callback Architecture (`Callback::from_fn`, `Stack`, and NAPI Reference Handling)
+
+In Ottavino, host functions reachable from Lua are constructed using:
+- **`ottavino::Callback::from_fn`**: Constructs a GC-managed callback handle from a Rust closure.
+- **`ottavino::Stack`**: Exposes the VM call stack (`stack.get(idx)`, `stack.push(val)`) to read argument values and push return values back onto the stack.
+
+### Interfacing NAPI JavaScript Functions as Lua Callbacks
+To bridge JavaScript function callbacks into Lua, the following architectural pipeline is utilized:
+1. **NAPI Reference Handling**: The host JS function is held via a persistent NAPI reference (`napi::Ref` / `napi::JsFunction` / thread-safe function handle) so that the garbage collector does not sweep the JS closure.
+2. **Stack Parameter Conversion**: When Lua calls the registered callback, `stack.get(i)` parameters are converted from `ottavino::Value` to `napi::JsValue` using `ottavino_val_to_js_val`.
+3. **JS Execution**: The NAPI runtime invokes the target JS callback with translated arguments.
+4. **Stack Return Value Conversion**: The JS return value is converted back into `ottavino::Value` using `js_to_ottavino_val` and pushed onto the VM stack via `stack.push(...)`.
+5. **Error Propagation**: Any JS exceptions caught during function execution return an `Err(ottavino::Error)`, allowing Lua `pcall`/`xpcall` or host `eval` to handle them gracefully.
+
+---
+
+## 3. Error Handling & Exception Boundaries
 
 When evaluating Lua code via `lua.eval(code)`:
 - **Syntax Errors**: If the Lua parser encounters invalid syntax, a native JavaScript `Error` is thrown (`parse error`).
@@ -36,7 +52,7 @@ When evaluating Lua code via `lua.eval(code)`:
 
 ---
 
-## 3. NAPI API Specification
+## 4. NAPI API Specification
 
 ### `Lua` Class
 
@@ -98,11 +114,11 @@ Handle for interacting with global environment variables (`_ENV`).
   Binds a global variable in the Lua environment. Converts primitives (`number`, `string`, `boolean`, `null`/`undefined`) or plain JS objects (recursively into Lua tables).
 
 - **`globals.get(lua: Lua, name: string): unknown`**
-  Retrieves a global variable from the Lua environment as a native JavaScript primitive value.
+  Retrieves a global variable from the Lua environment as a native JavaScript value (primitives or objects for tables).
 
 ---
 
-## 4. Helper Functions & Interfaces
+## 5. Helper Functions & Interfaces
 
 ### `evalLua(code: string): unknown`
 Helper function exported from `src/main.ts` that instantiates a full `Lua` VM and evaluates the provided Lua code string.

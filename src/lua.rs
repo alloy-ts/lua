@@ -1,4 +1,4 @@
-use napi::bindgen_prelude::{Env, Object as JsObject, Unknown, ValueType};
+use napi::bindgen_prelude::{Env, JsObjectValue, Object as JsObject, Unknown, ValueType};
 use napi::{JsNumber, JsString, JsValue};
 use napi::Error as NapiError;
 use napi_derive::napi;
@@ -29,6 +29,27 @@ enum JsVal {
     Integer(i64),
     Number(f64),
     String(Vec<u8>),
+    Table(Vec<(JsVal, JsVal)>),
+}
+
+fn ottavino_val_to_js_val<'gc>(ctx: OContext<'gc>, val: OValue<'gc>) -> JsVal {
+    match val {
+        OValue::Nil => JsVal::Nil,
+        OValue::Boolean(b) => JsVal::Boolean(b),
+        OValue::Integer(i) => JsVal::Integer(i),
+        OValue::Number(f) => JsVal::Number(f),
+        OValue::String(s) => JsVal::String(s.as_bytes().to_vec()),
+        OValue::Table(t) => {
+            let mut entries = Vec::new();
+            for (k, v) in t {
+                let k_js = ottavino_val_to_js_val(ctx, k);
+                let v_js = ottavino_val_to_js_val(ctx, v);
+                entries.push((k_js, v_js));
+            }
+            JsVal::Table(entries)
+        }
+        _ => JsVal::Nil,
+    }
 }
 
 fn js_val_to_unknown<'a>(env: &'a Env, val: JsVal) -> napi::Result<Unknown<'a>> {
@@ -65,6 +86,15 @@ fn js_val_to_unknown<'a>(env: &'a Env, val: JsVal) -> napi::Result<Unknown<'a>> 
                 );
                 Ok(Unknown::from_raw_unchecked(env.raw(), napi_val))
             }
+        }
+        JsVal::Table(entries) => {
+            let mut js_obj = JsObject::new(env)?;
+            for (k, v) in entries {
+                let k_unknown = js_val_to_unknown(env, k)?;
+                let v_unknown = js_val_to_unknown(env, v)?;
+                let _ = js_obj.set_property(k_unknown, v_unknown);
+            }
+            unsafe { Ok(Unknown::from_raw_unchecked(env.raw(), js_obj.raw())) }
         }
     }
 }
@@ -276,14 +306,7 @@ impl Lua {
             let exec = ctx.fetch(&executor);
             let res = exec.take_result::<OValue>(ctx).map_err(to_napi_err)?;
             let val = res.map_err(to_napi_err)?;
-            res_js_val = match val {
-                OValue::Nil => JsVal::Nil,
-                OValue::Boolean(b) => JsVal::Boolean(b),
-                OValue::Integer(i) => JsVal::Integer(i),
-                OValue::Number(f) => JsVal::Number(f),
-                OValue::String(s) => JsVal::String(s.as_bytes().to_vec()),
-                _ => JsVal::Nil,
-            };
+            res_js_val = ottavino_val_to_js_val(ctx, val);
             Ok(())
         }).map_err(to_napi_err)?;
 
@@ -329,14 +352,7 @@ impl Globals {
             let key = ctx.intern(name.as_bytes());
             let val = ctx.globals().get_value(ctx, key);
 
-            res_js_val = match val {
-                OValue::Nil => JsVal::Nil,
-                OValue::Boolean(b) => JsVal::Boolean(b),
-                OValue::Integer(i) => JsVal::Integer(i),
-                OValue::Number(f) => JsVal::Number(f),
-                OValue::String(s) => JsVal::String(s.as_bytes().to_vec()),
-                _ => JsVal::Nil,
-            };
+            res_js_val = ottavino_val_to_js_val(ctx, val);
         });
 
         js_val_to_unknown(env, res_js_val)

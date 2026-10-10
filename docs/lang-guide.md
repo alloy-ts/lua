@@ -79,6 +79,18 @@ Unlike standard C-Lua (PUC-Rio Lua) which relies on the native call stack, Ottav
 - Callbacks and VM execution steps do not lock the host call stack.
 - Long-running scripts can be paused, bounded, or interrupted safely without C `longjmp` stack unwinding issues.
 
+### Host Callbacks & Stack Primitives (`ottavino::Callback` & `ottavino::Stack`)
+Ottavino provides two core abstractions for host function execution:
+- **`Callback::from_fn`**: Wraps a Rust closure into a GC-managed Lua function.
+- **`Stack`**: Provides direct access to call parameters (`stack.get(idx)`) and return value placement (`stack.push(val)`).
+
+To invoke host JavaScript functions from Lua:
+1. NAPI holds JS function references (`napi::Ref` / `napi::JsFunction`).
+2. Parameters from `ottavino::Stack` (`stack.get(i)`) are converted from `ottavino::Value` to `napi::JsValue`.
+3. The JS callback is invoked.
+4. JS return values are converted back to `ottavino::Value` and pushed onto `stack.push(...)`.
+5. JS errors during execution return `Err(ottavino::Error)` so Lua `pcall`/`xpcall` or host `eval` catch them safely.
+
 ### Memory Safety & `gc-arena`
 - Ottavino relies on `gc-arena` for garbage collection, providing compile-time memory safety guarantees in safe Rust.
 - Memory usage is tracked accurately (`totalMemory()`, `gcMetrics()`), and garbage collection can be triggered explicitly (`gcCollect()`).
