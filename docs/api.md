@@ -10,10 +10,11 @@ For Lua 5.4 language basics and standard library modules, see [docs/lang-guide.m
 ## Exports Summary
 
 ```typescript
-import { Lua, type GcMetrics, __napiBindingTarget } from "@lib/module";
+import { Lua, Globals, type GcMetrics, __napiBindingTarget } from "@lib/module";
 ```
 
 - **`Lua`**: Main class representing a sandboxed Lua execution context.
+- **`Globals`**: Class representing the global variable table (`_ENV` / `ctx.globals()`).
 - **`GcMetrics`**: Interface representing garbage collector statistics.
 - **`__napiBindingTarget`**: String literal (`'native'`, `'wasm32-wasi'`, or `'wasm32-wasip1'`) identifying the loaded NAPI binding artifact.
 
@@ -23,21 +24,22 @@ import { Lua, type GcMetrics, __napiBindingTarget } from "@lib/module";
 
 The table below outlines the core Rust APIs provided by the `ottavino` crate and how they map to our NAPI TypeScript bindings:
 
-| Ottavino Rust API                        | Description                                                                                                        | Current NAPI Binding Coverage                                                                                                                   |
-| :--------------------------------------- | :----------------------------------------------------------------------------------------------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ottavino::Lua`                          | Primary VM state and allocator owner.                                                                              | Exposed as TypeScript class `Lua` (`new Lua()`, `Lua.full()`, `Lua.core()`, `Lua.empty()`).                                                     |
-| `Lua::load_core` / `load_io`             | Dynamic stdlib loading methods.                                                                                    | Exposed as `lua.loadCore()` and `lua.loadIo()`.                                                                                                 |
-| `Lua::total_memory`                      | Memory tracking in bytes.                                                                                          | Exposed as `lua.totalMemory(): number`.                                                                                                         |
-| `Lua::gc_collect`                        | Garbage collection trigger.                                                                                        | Exposed as `lua.gcCollect(): void`.                                                                                                             |
-| `Lua::gc_metrics`                        | Allocator statistics snapshot.                                                                                     | Exposed as `lua.gcMetrics(): GcMetrics`.                                                                                                        |
-| `ottavino::Value<'gc>`                   | Universal value enum (`Nil`, `Boolean`, `Integer`, `Number`, `String`, `Table`, `Function`, `Thread`, `UserData`). | Evaluated implicitly via `lua.eval()` and `lua.getGlobal()` / `lua.setGlobal()`. Mapped bi-directionally to JS primitives, objects, and arrays. |
-| `ottavino::Table<'gc>`                   | Associative and sequential table structure.                                                                        | Converted automatically to JS Objects (`Record<string, unknown>`) or JS Arrays (`unknown[]`).                                                   |
-| `ottavino::Closure<'gc>`                 | Compiled Lua bytecode chunk bound to `_ENV`.                                                                       | Managed internally during `lua.eval(code)`.                                                                                                     |
-| `ottavino::Executor<'gc>`                | Stackless VM trampoline executor.                                                                                  | Driven internally to completion inside `lua.eval()`.                                                                                            |
-| `ottavino::Callback<'gc>` / `CallbackFn` | Host functions implemented in Rust.                                                                                | Internal stdlib callbacks are pre-bound.                                                                                                        |
-| `ottavino::Stack<'gc, '_>`               | Function argument/register stack.                                                                                  | Handled internally during function invocation and evaluation.                                                                                   |
-| `ottavino::Thread<'gc>`                  | Lua coroutine execution context.                                                                                   | Returned as `"[lua thread]"` in string representations; managed via Lua `coroutine` library.                                                    |
-| `ottavino::Fuel`                         | Instruction stepping and pacing counter.                                                                           | Bounded internally during evaluation loops.                                                                                                     |
+| Ottavino Rust API                        | Description                                                                                                        | Current NAPI Binding Coverage                                                                                                                           |
+| :--------------------------------------- | :----------------------------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `ottavino::Lua`                          | Primary VM state and allocator owner.                                                                              | Exposed as TypeScript class `Lua` (`new Lua()`, `Lua.full()`, `Lua.core()`, `Lua.empty()`).                                                             |
+| `ctx.globals()`                          | Access handle for the global environment table (`_ENV`).                                                           | Exposed as `lua.globals(): Globals` (`globals.get(name)` / `globals.set(name, value)`).                                                                 |
+| `Lua::load_core` / `load_io`             | Dynamic stdlib loading methods.                                                                                    | Exposed as `lua.loadCore()` and `lua.loadIo()`.                                                                                                         |
+| `Lua::total_memory`                      | Memory tracking in bytes.                                                                                          | Exposed as `lua.totalMemory(): number`.                                                                                                                 |
+| `Lua::gc_collect`                        | Garbage collection trigger.                                                                                        | Exposed as `lua.gcCollect(): void`.                                                                                                                     |
+| `Lua::gc_metrics`                        | Allocator statistics snapshot.                                                                                     | Exposed as `lua.gcMetrics(): GcMetrics`.                                                                                                                |
+| `ottavino::Value<'gc>`                   | Universal value enum (`Nil`, `Boolean`, `Integer`, `Number`, `String`, `Table`, `Function`, `Thread`, `UserData`). | Evaluated implicitly via `lua.eval()` and `lua.globals().get()` / `lua.globals().set()`. Mapped bi-directionally to JS primitives, objects, and arrays. |
+| `ottavino::Table<'gc>`                   | Associative and sequential table structure.                                                                        | Converted automatically to JS Objects (`Record<string, unknown>`) or JS Arrays (`unknown[]`).                                                           |
+| `ottavino::Closure<'gc>`                 | Compiled Lua bytecode chunk bound to `_ENV`.                                                                       | Managed internally during `lua.eval(code)`.                                                                                                             |
+| `ottavino::Executor<'gc>`                | Stackless VM trampoline executor.                                                                                  | Driven internally to completion inside `lua.eval()`.                                                                                                    |
+| `ottavino::Callback<'gc>` / `CallbackFn` | Host functions implemented in Rust.                                                                                | Internal stdlib callbacks are pre-bound.                                                                                                                |
+| `ottavino::Stack<'gc, '_>`               | Function argument/register stack.                                                                                  | Handled internally during function invocation and evaluation.                                                                                           |
+| `ottavino::Thread<'gc>`                  | Lua coroutine execution context.                                                                                   | Returned as `"[lua thread]"` in string representations; managed via Lua `coroutine` library.                                                            |
+| `ottavino::Fuel`                         | Instruction stepping and pacing counter.                                                                           | Bounded internally during evaluation loops.                                                                                                             |
 
 ---
 
@@ -83,6 +85,18 @@ const lua = Lua.empty();
 
 ### Instance Methods
 
+#### `lua.globals(): Globals`
+
+Returns the `Globals` handle for interacting directly with the global environment table (`_ENV` / `ctx.globals()`), mirroring Ottavino's Rust API.
+
+```typescript
+const globals = lua.globals();
+globals.set("appName", "MyService");
+console.log(globals.get("appName")); // "MyService"
+```
+
+---
+
 #### `lua.eval(code: string): unknown`
 
 Compiles and executes the provided Lua script string and returns the result as a JavaScript value.
@@ -101,31 +115,13 @@ console.log(result); // 50
 
 #### `lua.setGlobal(name: string, value: unknown): void`
 
-Sets a global variable in the Lua environment.
-
-- **Parameters:**
-  - `name` (`string`): Name of the global variable.
-  - `value` (`unknown`): The JavaScript value (primitive, array, or object) to set in Lua.
-
-```typescript
-lua.setGlobal("maxUsers", 500);
-lua.setGlobal("config", { env: "production", debug: false });
-```
+Convenience wrapper over `lua.globals().set(name, value)`. Sets a global variable in the Lua environment.
 
 ---
 
 #### `lua.getGlobal(name: string): unknown`
 
-Retrieves a global variable from the Lua environment by name.
-
-- **Parameters:**
-  - `name` (`string`): Name of the global variable to retrieve.
-- **Returns:** `unknown` - The value of the global variable converted to JavaScript.
-
-```typescript
-const env = lua.getGlobal("config");
-console.log(env); // { env: 'production', debug: false }
-```
+Convenience wrapper over `lua.globals().get(name)`. Retrieves a global variable from the Lua environment.
 
 ---
 
@@ -133,21 +129,11 @@ console.log(env); // { env: 'production', debug: false }
 
 Loads core standard libraries (`base`, `math`, `string`, `table`, `coroutine`) into an existing Lua VM instance.
 
-```typescript
-const lua = Lua.empty();
-lua.loadCore(); // Enables math, string, table, etc.
-```
-
 ---
 
 #### `lua.loadIo(): void`
 
 Loads the I/O standard library into an existing Lua VM instance.
-
-```typescript
-const lua = Lua.core();
-lua.loadIo(); // Enables I/O functions like print
-```
 
 ---
 
@@ -155,35 +141,40 @@ lua.loadIo(); // Enables I/O functions like print
 
 Returns total memory currently allocated and tracked by the Lua VM, measured in bytes.
 
-- **Returns:** `number` - Total byte size.
-
-```typescript
-const bytesUsed = lua.totalMemory();
-console.log(`Memory used: ${bytesUsed} bytes`);
-```
-
 ---
 
 #### `lua.gcCollect(): void`
 
 Triggers a full garbage collection cycle inside the Lua VM allocator.
 
-```typescript
-lua.gcCollect();
-```
-
 ---
 
 #### `lua.gcMetrics(): GcMetrics`
 
-Returns garbage collector allocator metrics snapshot.
+Returns garbage collector allocator metrics snapshot (`totalAllocation`, `allocationDebt`).
 
-- **Returns:** `GcMetrics` - Object containing `totalAllocation` and `allocationDebt`.
+---
+
+## Class: `Globals`
+
+The `Globals` class provides direct access to the global environment table (`_ENV` / `ctx.globals()`).
+
+### Methods
+
+#### `globals.get(name: string): unknown`
+
+Retrieves a global variable from the Lua environment by name.
 
 ```typescript
-const metrics = lua.gcMetrics();
-console.log("Total Allocation:", metrics.totalAllocation);
-console.log("Allocation Debt:", metrics.allocationDebt);
+const port = globals.get("PORT");
+```
+
+#### `globals.set(name: string, value: unknown): void`
+
+Binds a global variable in the Lua environment. Converts JS primitives, objects, and arrays into their Lua table/value equivalents.
+
+```typescript
+globals.set("config", { env: "production", retries: 3 });
 ```
 
 ---
@@ -238,21 +229,3 @@ Errors originating inside Lua execution cross the language boundary safely throu
 
 3. **In-Lua Error Interception (`pcall`)**:
    Errors handled inside Lua via `pcall(function, args...)` are intercepted within the VM state before crossing the NAPI boundary, returning `{ ok: false, error: message }` to the caller without throwing a JavaScript exception.
-
-### 2. TypeScript / JavaScript Example
-
-```typescript
-// Catching Lua compile errors
-try {
-  lua.eval("function unclosed(");
-} catch (err) {
-  console.error((err as Error).message); // "Lua compile error: parse error"
-}
-
-// Catching Lua runtime errors
-try {
-  lua.eval("error('Database Connection Timeout')");
-} catch (err) {
-  console.error((err as Error).message); // "Lua runtime error: lua error: Database Connection Timeout"
-}
-```

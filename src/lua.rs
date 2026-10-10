@@ -1,3 +1,6 @@
+use std::cell::RefCell;
+use std::rc::Rc;
+
 use napi::bindgen_prelude::{Env, FromNapiValue, JsObjectValue, Object, ToNapiValue, ValueType};
 use napi::{Error as NapiError, JsValue, Unknown};
 use napi_derive::napi;
@@ -13,139 +16,24 @@ pub struct GcMetrics {
     pub allocation_debt: f64,
 }
 
-/// A Lua execution environment exported to JavaScript/TypeScript via NAPI.
+/// Handle for interacting with global variables in the Lua environment (`_ENV` / `ctx.globals()`).
 #[napi]
-pub struct Lua {
-    inner: OLua,
+pub struct Globals {
+    inner: Rc<RefCell<OLua>>,
 }
 
 #[napi]
-impl Lua {
-    /// Create a new `Lua` instance with the full stdlib loaded.
-    #[napi(constructor)]
-    pub fn new() -> Self {
-        Lua {
-            inner: OLua::full(),
-        }
-    }
-
-    /// Create a `Lua` instance with no parts of the stdlib loaded.
-    #[napi(factory)]
-    pub fn empty() -> Self {
-        Lua {
-            inner: OLua::empty(),
-        }
-    }
-
-    /// Create a `Lua` instance with the core (non-I/O) stdlib loaded.
-    #[napi(factory)]
-    pub fn core() -> Self {
-        Lua {
-            inner: OLua::core(),
-        }
-    }
-
-    /// Create a `Lua` instance with the full stdlib loaded.
-    #[napi(factory)]
-    pub fn full() -> Self {
-        Lua {
-            inner: OLua::full(),
-        }
-    }
-
-    /// Load the core stdlib (base, coroutine, math, string, table).
+impl Globals {
+    /// Retrieve a global variable from the Lua environment by name.
     #[napi]
-    pub fn load_core(&mut self) {
-        self.inner.load_core();
-    }
-
-    /// Load the I/O stdlib.
-    #[napi]
-    pub fn load_io(&mut self) {
-        self.inner.load_io();
-    }
-
-    /// Size of memory used by this Lua context, in bytes.
-    #[napi]
-    pub fn total_memory(&self) -> f64 {
-        self.inner.total_memory() as f64
-    }
-
-    /// Run garbage collection cycle.
-    #[napi]
-    pub fn gc_collect(&mut self) {
-        self.inner.gc_collect();
-    }
-
-    /// Get garbage collector metrics.
-    #[napi]
-    pub fn gc_metrics(&self) -> GcMetrics {
-        let m = self.inner.gc_metrics();
-        GcMetrics {
-            total_allocation: m.total_allocation() as f64,
-            allocation_debt: m.allocation_debt(),
-        }
-    }
-
-    /// Evaluate Lua code string and return the result as a JavaScript value.
-    #[napi]
-    pub fn eval<'js>(&mut self, env: &'js Env, code: String) -> Result<Unknown<'js>, NapiError> {
-        let mut stashed_opt = None;
-        let mut compile_err = None;
-
-        self.inner.enter(
-            |ctx| match ottavino::Closure::load(ctx, Some("eval"), code.as_bytes()) {
-                Ok(closure) => {
-                    let executor = ottavino::Executor::start(ctx, closure.into(), ());
-                    stashed_opt = Some(ctx.stash(executor));
-                }
-                Err(err) => {
-                    compile_err = Some(format!("Lua compile error: {err}"));
-                }
-            },
-        );
-
-        if let Some(err) = compile_err {
-            return Err(NapiError::from_reason(err));
-        }
-
-        let stashed = stashed_opt.unwrap();
-
-        if let Err(e) = self.inner.finish(&stashed) {
-            return Err(NapiError::from_reason(format!("Lua finish error: {e}")));
-        }
-
-        let mut eval_result: Result<Unknown<'js>, NapiError> =
-            Err(NapiError::from_reason("Execution failed"));
-
-        self.inner.enter(
-            |ctx| match ctx.fetch(&stashed).take_result::<ottavino::Value>(ctx) {
-                Ok(Ok(val)) => {
-                    eval_result = ottavino_value_to_js(env, ctx, val);
-                }
-                Ok(Err(err)) => {
-                    eval_result = Err(NapiError::from_reason(format!("Lua runtime error: {err}")));
-                }
-                Err(err) => {
-                    eval_result = Err(NapiError::from_reason(format!(
-                        "Lua execution error: {err}"
-                    )));
-                }
-            },
-        );
-
-        eval_result
-    }
-
-    /// Get a global variable from Lua environment by name.
-    #[napi]
-    pub fn get_global<'js>(
-        &mut self,
+    pub fn get<'js>(
+        &self,
         env: &'js Env,
         name: String,
     ) -> Result<Unknown<'js>, NapiError> {
+        let mut lua = self.inner.borrow_mut();
         let mut get_result: Result<Unknown<'js>, NapiError> = ().into_unknown(env);
-        self.inner.enter(|ctx| {
+        lua.enter(|ctx| {
             let key = ctx.intern(name.as_bytes());
             let val = ctx.globals().get_raw(ottavino::Value::String(key));
             get_result = ottavino_value_to_js(env, ctx, val);
@@ -154,29 +42,181 @@ impl Lua {
         get_result
     }
 
-    /// Set a global variable in Lua environment by name.
+    /// Set a global variable in the Lua environment by name.
     #[napi]
-    pub fn set_global<'js>(
-        &mut self,
+    pub fn set<'js>(
+        &self,
         env: &'js Env,
         name: String,
         value: Unknown<'js>,
     ) -> Result<(), NapiError> {
+        let mut lua = self.inner.borrow_mut();
         let mut set_result: Result<(), NapiError> = Ok(());
-        self.inner
-            .enter(|ctx| match js_to_ottavino_value(env, ctx, value) {
-                Ok(lua_val) => {
-                    let key = ctx.intern(name.as_bytes());
-                    if let Err(e) = ctx.globals().set(ctx, key, lua_val) {
-                        set_result = Err(NapiError::from_reason(e.to_string()));
-                    }
+        lua.enter(|ctx| match js_to_ottavino_value(env, ctx, value) {
+            Ok(lua_val) => {
+                let key = ctx.intern(name.as_bytes());
+                if let Err(e) = ctx.globals().set(ctx, key, lua_val) {
+                    set_result = Err(NapiError::from_reason(e.to_string()));
                 }
-                Err(e) => {
-                    set_result = Err(e);
-                }
-            });
+            }
+            Err(e) => {
+                set_result = Err(e);
+            }
+        });
 
         set_result
+    }
+}
+
+/// A Lua execution environment exported to JavaScript/TypeScript via NAPI.
+#[napi]
+pub struct Lua {
+    inner: Rc<RefCell<OLua>>,
+}
+
+#[napi]
+impl Lua {
+    /// Create a new `Lua` instance with the full stdlib loaded.
+    #[napi(constructor)]
+    pub fn new() -> Self {
+        Lua {
+            inner: Rc::new(RefCell::new(OLua::full())),
+        }
+    }
+
+    /// Create a `Lua` instance with no parts of the stdlib loaded.
+    #[napi(factory)]
+    pub fn empty() -> Self {
+        Lua {
+            inner: Rc::new(RefCell::new(OLua::empty())),
+        }
+    }
+
+    /// Create a `Lua` instance with the core (non-I/O) stdlib loaded.
+    #[napi(factory)]
+    pub fn core() -> Self {
+        Lua {
+            inner: Rc::new(RefCell::new(OLua::core())),
+        }
+    }
+
+    /// Create a `Lua` instance with the full stdlib loaded.
+    #[napi(factory)]
+    pub fn full() -> Self {
+        Lua {
+            inner: Rc::new(RefCell::new(OLua::full())),
+        }
+    }
+
+    /// Access the global variables handle (`_ENV` / `ctx.globals()`).
+    #[napi]
+    pub fn globals(&self) -> Globals {
+        Globals {
+            inner: Rc::clone(&self.inner),
+        }
+    }
+
+    /// Load the core stdlib (base, coroutine, math, string, table).
+    #[napi]
+    pub fn load_core(&self) {
+        self.inner.borrow_mut().load_core();
+    }
+
+    /// Load the I/O stdlib.
+    #[napi]
+    pub fn load_io(&self) {
+        self.inner.borrow_mut().load_io();
+    }
+
+    /// Size of memory used by this Lua context, in bytes.
+    #[napi]
+    pub fn total_memory(&self) -> f64 {
+        self.inner.borrow().total_memory() as f64
+    }
+
+    /// Run garbage collection cycle.
+    #[napi]
+    pub fn gc_collect(&self) {
+        self.inner.borrow_mut().gc_collect();
+    }
+
+    /// Get garbage collector metrics.
+    #[napi]
+    pub fn gc_metrics(&self) -> GcMetrics {
+        let lua = self.inner.borrow();
+        let m = lua.gc_metrics();
+        GcMetrics {
+            total_allocation: m.total_allocation() as f64,
+            allocation_debt: m.allocation_debt(),
+        }
+    }
+
+    /// Evaluate Lua code string and return the result as a JavaScript value.
+    #[napi]
+    pub fn eval<'js>(&self, env: &'js Env, code: String) -> Result<Unknown<'js>, NapiError> {
+        let mut lua = self.inner.borrow_mut();
+        let mut stashed_opt = None;
+        let mut compile_err = None;
+
+        lua.enter(|ctx| match ottavino::Closure::load(ctx, Some("eval"), code.as_bytes()) {
+            Ok(closure) => {
+                let executor = ottavino::Executor::start(ctx, closure.into(), ());
+                stashed_opt = Some(ctx.stash(executor));
+            }
+            Err(err) => {
+                compile_err = Some(format!("Lua compile error: {err}"));
+            }
+        });
+
+        if let Some(err) = compile_err {
+            return Err(NapiError::from_reason(err));
+        }
+
+        let stashed = stashed_opt.unwrap();
+
+        if let Err(e) = lua.finish(&stashed) {
+            return Err(NapiError::from_reason(format!("Lua finish error: {e}")));
+        }
+
+        let mut eval_result: Result<Unknown<'js>, NapiError> =
+            Err(NapiError::from_reason("Execution failed"));
+
+        lua.enter(|ctx| match ctx.fetch(&stashed).take_result::<ottavino::Value>(ctx) {
+            Ok(Ok(val)) => {
+                eval_result = ottavino_value_to_js(env, ctx, val);
+            }
+            Ok(Err(err)) => {
+                eval_result = Err(NapiError::from_reason(format!("Lua runtime error: {err}")));
+            }
+            Err(err) => {
+                eval_result = Err(NapiError::from_reason(format!(
+                    "Lua execution error: {err}"
+                )));
+            }
+        });
+
+        eval_result
+    }
+
+    /// Get a global variable from Lua environment by name.
+    #[napi]
+    pub fn get_global<'js>(
+        &self,
+        env: &'js Env,
+        name: String,
+    ) -> Result<Unknown<'js>, NapiError> {
+        self.globals().get(env, name)
+    }
+
+    /// Set a global variable in Lua environment by name.
+    #[napi]
+    pub fn set_global<'js>(
+        &self,
+        env: &'js Env,
+        name: String,
+        value: Unknown<'js>,
+    ) -> Result<(), NapiError> {
+        self.globals().set(env, name, value)
     }
 }
 

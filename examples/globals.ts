@@ -2,43 +2,44 @@ import { Lua } from "../index.js";
 
 /**
  * Example demonstrating how to manage Lua globals from TypeScript/JavaScript:
- * covering primitives (numbers, strings, booleans, nil), variables/constants,
- * and complex objects (tables, arrays, nested structures).
+ * using `lua.globals()` to set and get primitives (numbers, strings, booleans, nil),
+ * variables/constants, and complex objects (tables, arrays, nested structures).
  */
 export function runGlobalsExample() {
   const lua = Lua.full();
+  const globals = lua.globals();
 
   console.log("=== Part 1: Defining Primitives (Numbers, Strings, Booleans, Nil) ===");
 
   // Numbers (integers & floats)
-  lua.setGlobal("MAX_CONNECTIONS", 100);
-  lua.setGlobal("PI", 3.14159);
+  globals.set("MAX_CONNECTIONS", 100);
+  globals.set("PI", 3.14159);
 
   // Strings
-  lua.setGlobal("SERVICE_NAME", "AuthService");
+  globals.set("SERVICE_NAME", "AuthService");
 
   // Booleans
-  lua.setGlobal("FEATURE_ENABLED", true);
+  globals.set("FEATURE_ENABLED", true);
 
   // Nil (null / undefined)
-  lua.setGlobal("UNSET_VAR", null);
+  globals.set("UNSET_VAR", null);
 
-  // Verification via eval & getGlobal
+  // Verification via eval & globals.get()
   console.log("MAX_CONNECTIONS:", lua.eval("return MAX_CONNECTIONS")); // 100
   console.log("PI:", lua.eval("return PI")); // 3.14159
   console.log("SERVICE_NAME:", lua.eval("return SERVICE_NAME")); // "AuthService"
   console.log("FEATURE_ENABLED:", lua.eval("return FEATURE_ENABLED")); // true
   console.log("UNSET_VAR:", lua.eval("return UNSET_VAR")); // undefined
-  console.log("getGlobal('SERVICE_NAME'):", lua.getGlobal("SERVICE_NAME")); // "AuthService"
+  console.log("globals.get('SERVICE_NAME'):", globals.get("SERVICE_NAME")); // "AuthService"
 
   console.log("\n=== Part 2: Defining Variables and Constants in Lua ===");
 
   // Global variable in Lua code
   lua.eval("counter = 1");
-  console.log("Initial counter:", lua.getGlobal("counter"));
+  console.log("Initial counter:", globals.get("counter"));
 
   lua.eval("counter = counter + 1");
-  console.log("Updated counter:", lua.getGlobal("counter"));
+  console.log("Updated counter:", globals.get("counter"));
 
   // Read-only constant table using metatables
   lua.eval(`
@@ -58,18 +59,18 @@ export function runGlobalsExample() {
     role: "administrator",
     active: true,
   };
-  lua.setGlobal("user", userObj);
+  globals.set("user", userObj);
 
   console.log("user.name in Lua:", lua.eval("return user.name")); // "Alice"
-  console.log("Retrieved user in TS:", lua.getGlobal("user"));
+  console.log("Retrieved user in TS:", globals.get("user"));
 
   // Arrays -> 1-indexed Lua Tables
   const scoresArray = [95, 88, 92, 100];
-  lua.setGlobal("scores", scoresArray);
+  globals.set("scores", scoresArray);
 
   console.log("scores[1] in Lua:", lua.eval("return scores[1]")); // 95
   console.log("Length of scores (#scores):", lua.eval("return #scores")); // 4
-  console.log("Retrieved scores in TS:", lua.getGlobal("scores"));
+  console.log("Retrieved scores in TS:", globals.get("scores"));
 
   console.log("\n=== Part 4: Nested Structures and Lua Mutations ===");
 
@@ -82,7 +83,7 @@ export function runGlobalsExample() {
       remoteAllowed: true,
     },
   };
-  lua.setGlobal("company", companyData);
+  globals.set("company", companyData);
 
   console.log("company.departments[1] in Lua:", lua.eval("return company.departments[1]")); // "Engineering"
 
@@ -90,7 +91,7 @@ export function runGlobalsExample() {
   lua.eval("company.settings.maxCapacity = 600");
   lua.eval("table.insert(company.departments, 'Marketing')");
 
-  console.log("Updated company object in TS:", lua.getGlobal("company"));
+  console.log("Updated company object in TS:", globals.get("company"));
 }
 
 // Execute the example when run directly

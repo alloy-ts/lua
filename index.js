@@ -885,6 +885,7 @@ if (!nativeBinding) {
   throw new Error(`Failed to load native binding`);
 }
 
-const { Lua } = nativeBinding;
+const { Globals, Lua } = nativeBinding;
+export { Globals };
 export { Lua };
 export const __napiBindingTarget = __napiLoadedBindingTarget;

@@ -8,7 +8,7 @@ This library uses [NAPI-RS](https://napi.rs/) and [Ottavino](https://github.com/
 
 - **Full Lua Environment**: Create sandboxed Lua states with empty, core, or full standard libraries.
 - **Eval Lua Code**: Run arbitrary Lua scripts and return JavaScript primitives, objects, and arrays.
-- **Global Variable Binding**: Get and set global variables in the Lua VM directly from JS/TS.
+- **Globals Handle API (`lua.globals()`)**: Get and set global variables in the Lua VM (`_ENV` / `ctx.globals()`) directly from JS/TS.
 - **Stackless & Resilient Architecture**: Powered by Ottavino's stackless interpreter design for safe sandboxing and polling.
 - **GC & Memory Controls**: Monitor memory consumption (`totalMemory()`), allocator debt (`gcMetrics()`), and manually trigger garbage collection (`gcCollect()`).
 
@@ -40,12 +40,13 @@ console.log(result); // 7
 const greeting = lua.eval("return 'Hello, ' .. 'Lua!'");
 console.log(greeting); // "Hello, Lua!"
 
-// Set global variables from JS/TS
-lua.setGlobal("multiplier", 10);
-lua.setGlobal("data", { name: "Lua", active: true });
+// Interacting with Globals (_ENV / ctx.globals()) via Globals handle API
+const globals = lua.globals();
+globals.set("multiplier", 10);
+globals.set("data", { name: "Lua", active: true });
 
 // Read global variables and use them in Lua code
-console.log(lua.getGlobal("multiplier")); // 10
+console.log(globals.get("multiplier")); // 10
 const calculated = lua.eval("return data.name .. ' x' .. multiplier");
 console.log(calculated); // "Lua x10"
 
@@ -60,7 +61,7 @@ lua.gcCollect();
 
 ## Documentation
 
-- [API Reference](docs/api.md) — Detailed TypeScript methods, types, and error handling.
+- [API Reference](docs/api.md) — Detailed TypeScript methods, `Globals` API, types, and error handling.
 - [Language & Stdlib Guide](docs/lang-guide.md) — Lua 5.4 syntax, standard library modules, and sandboxing subsets.
 - [Architecture & Design Guide](docs/architecture.md) — In-depth overview of Piccolo/Ottavino's stackless VM design, `gc-arena`, fuel pacing, and coroutines.
 
@@ -74,9 +75,10 @@ lua.gcCollect();
 
 ### Methods
 
-- `lua.eval(code: string): unknown`: Compiles and executes the given Lua code string, returning the result as a JavaScript value.
-- `lua.setGlobal(name: string, value: unknown): void`: Sets a global variable in the Lua VM environment.
-- `lua.getGlobal(name: string): unknown`: Retrieves a global variable from the Lua VM environment.
+- `lua.globals(): Globals`: Returns the `Globals` handle for `_ENV` / `ctx.globals()`.
+  - `globals.get(name: string): unknown`: Retrieves a global variable.
+  - `globals.set(name: string, value: unknown): void`: Binds a global variable.
+- `lua.eval(code: string): unknown`: Compiles and executes Lua code string, returning result as JS value.
 - `lua.loadCore(): void`: Loads core standard libraries into an existing Lua state.
 - `lua.loadIo(): void`: Loads I/O standard libraries into an existing Lua state.
 - `lua.totalMemory(): number`: Returns total memory used by the Lua VM in bytes.

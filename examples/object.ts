@@ -2,10 +2,11 @@ import { Lua } from "../index.js";
 
 /**
  * Example demonstrating how to define Lua objects (tables) and arrays from TypeScript/JavaScript
- * objects and arrays using NAPI bindings.
+ * objects and arrays using `lua.globals()`.
  */
 export function runObjectExample() {
   const lua = Lua.full();
+  const globals = lua.globals();
 
   console.log("=== Defining Lua Objects (Tables) from TS Objects ===");
 
@@ -17,14 +18,14 @@ export function runObjectExample() {
     active: true,
   };
 
-  lua.setGlobal("user", userObj);
+  globals.set("user", userObj);
 
   // Access table fields in Lua
   console.log("user.name in Lua:", lua.eval("return user.name")); // "Alice"
   console.log("user.role in Lua:", lua.eval("return user.role")); // "administrator"
 
   // Retrieve the whole object back from Lua to TS
-  const retrievedUser = lua.getGlobal("user");
+  const retrievedUser = globals.get("user");
   console.log("Retrieved user object in TS:", retrievedUser);
 
   console.log("\n=== Defining Lua Arrays from TS Arrays ===");
@@ -32,14 +33,14 @@ export function runObjectExample() {
   // 2. Define a TypeScript array as a Lua table (1-indexed in Lua)
   const scoresArray = [95, 88, 92, 100];
 
-  lua.setGlobal("scores", scoresArray);
+  globals.set("scores", scoresArray);
 
   // Note: Lua tables use 1-based indexing for arrays
   console.log("scores[1] in Lua:", lua.eval("return scores[1]")); // 95
   console.log("Length of scores table in Lua:", lua.eval("return #scores")); // 4
 
   // Retrieve array back from Lua
-  const retrievedScores = lua.getGlobal("scores");
+  const retrievedScores = globals.get("scores");
   console.log("Retrieved scores array in TS:", retrievedScores);
 
   console.log("\n=== Defining Nested Objects and Arrays ===");
@@ -55,7 +56,7 @@ export function runObjectExample() {
     },
   };
 
-  lua.setGlobal("company", companyData);
+  globals.set("company", companyData);
 
   // Evaluate nested access in Lua
   console.log("company.departments[1] in Lua:", lua.eval("return company.departments[1]")); // "Engineering"
@@ -69,7 +70,7 @@ export function runObjectExample() {
   lua.eval("table.insert(company.departments, 'Marketing')");
 
   console.log("\n=== Object After Lua Mutation ===");
-  const updatedCompany = lua.getGlobal("company");
+  const updatedCompany = globals.get("company");
   console.log("Updated company object in TS:", updatedCompany);
 }
 

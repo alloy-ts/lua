@@ -9,6 +9,14 @@
  */
 export declare const __napiBindingTarget: "native" | "wasm32-wasi" | "wasm32-wasip1";
 
+/** Handle for interacting with global variables in the Lua environment (`_ENV` / `ctx.globals()`). */
+export declare class Globals {
+  /** Retrieve a global variable from the Lua environment by name. */
+  get(name: string): unknown;
+  /** Set a global variable in the Lua environment by name. */
+  set(name: string, value: unknown): void;
+}
+
 /** A Lua execution environment exported to JavaScript/TypeScript via NAPI. */
 export declare class Lua {
   /** Create a new `Lua` instance with the full stdlib loaded. */
@@ -19,6 +27,8 @@ export declare class Lua {
   static core(): Lua;
   /** Create a `Lua` instance with the full stdlib loaded. */
   static full(): Lua;
+  /** Access the global variables handle (`_ENV` / `ctx.globals()`). */
+  globals(): Globals;
   /** Load the core stdlib (base, coroutine, math, string, table). */
   loadCore(): void;
   /** Load the I/O stdlib. */

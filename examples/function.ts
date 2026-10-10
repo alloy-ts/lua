@@ -2,10 +2,11 @@ import { Lua } from "../index.js";
 
 /**
  * Example demonstrating how to define, pass parameters to, and invoke Lua functions
- * from TypeScript using NAPI bindings.
+ * from TypeScript using `lua.globals()` and `lua.eval()`.
  */
 export function runFunctionExample() {
   const lua = Lua.full();
+  const globals = lua.globals();
 
   console.log("=== Part 1: Defining and Invoking Simple Functions ===");
 
@@ -21,7 +22,7 @@ export function runFunctionExample() {
   `);
 
   // Inspect function references
-  console.log("add function reference:", lua.getGlobal("add")); // "[lua function]"
+  console.log("add function reference:", globals.get("add")); // "[lua function]"
 
   // Invoke Lua function with arguments via eval
   console.log("add(15, 27):", lua.eval("return add(15, 27)")); // 42
@@ -30,8 +31,8 @@ export function runFunctionExample() {
   console.log("\n=== Part 2: Passing TS Variables as Function Arguments ===");
 
   // Set TS variables as globals to use as arguments
-  lua.setGlobal("x", 100);
-  lua.setGlobal("y", 250);
+  globals.set("x", 100);
+  globals.set("y", 250);
 
   const sumResult = lua.eval("return add(x, y)");
   console.log("add(x, y) with TS globals:", sumResult); // 350
@@ -69,7 +70,7 @@ export function runFunctionExample() {
   `);
 
   // Pass TS object into Lua function
-  lua.setGlobal("inputUser", {
+  globals.set("inputUser", {
     firstName: "Jane",
     lastName: "Doe",
     age: 25,

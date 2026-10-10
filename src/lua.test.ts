@@ -90,32 +90,34 @@ describe("Lua eval and Type Conversions", () => {
   });
 });
 
-describe("Globals Management", () => {
-  test("sets and gets global primitive values", () => {
+describe("Globals Handle API (lua.globals())", () => {
+  test("sets and gets global primitive values via globals() handle", () => {
     const lua = Lua.full();
+    const globals = lua.globals();
 
-    lua.setGlobal("num", 100);
-    expect(lua.getGlobal("num")).toBe(100);
+    globals.set("num", 100);
+    expect(globals.get("num")).toBe(100);
     expect(lua.eval("return num + 50")).toBe(150);
 
-    lua.setGlobal("str", "Lua + JS");
-    expect(lua.getGlobal("str")).toBe("Lua + JS");
+    globals.set("str", "Lua + JS");
+    expect(globals.get("str")).toBe("Lua + JS");
     expect(lua.eval("return str .. '!'")).toBe("Lua + JS!");
 
-    lua.setGlobal("flag", true);
-    expect(lua.getGlobal("flag")).toBe(true);
+    globals.set("flag", true);
+    expect(globals.get("flag")).toBe(true);
     expect(lua.eval("return not flag")).toBe(false);
   });
 
-  test("sets and gets global arrays and objects", () => {
+  test("sets and gets global arrays and objects via globals() handle", () => {
     const lua = Lua.full();
+    const globals = lua.globals();
 
-    lua.setGlobal("numbers", [10, 20, 30]);
-    expect(lua.getGlobal("numbers")).toEqual([10, 20, 30]);
+    globals.set("numbers", [10, 20, 30]);
+    expect(globals.get("numbers")).toEqual([10, 20, 30]);
     expect(lua.eval("return numbers[1] + numbers[2]")).toBe(30);
 
-    lua.setGlobal("config", { env: "production", debug: false });
-    expect(lua.getGlobal("config")).toEqual({
+    globals.set("config", { env: "production", debug: false });
+    expect(globals.get("config")).toEqual({
       env: "production",
       debug: false,
     });
@@ -124,12 +126,21 @@ describe("Globals Management", () => {
 
   test("handles undefined and null when setting globals", () => {
     const lua = Lua.full();
+    const globals = lua.globals();
 
-    lua.setGlobal("temp", null);
-    expect(lua.getGlobal("temp")).toBeUndefined();
+    globals.set("temp", null);
+    expect(globals.get("temp")).toBeUndefined();
 
-    lua.setGlobal("temp2", undefined);
-    expect(lua.getGlobal("temp2")).toBeUndefined();
+    globals.set("temp2", undefined);
+    expect(globals.get("temp2")).toBeUndefined();
+  });
+
+  test("supports legacy getGlobal and setGlobal wrappers", () => {
+    const lua = Lua.full();
+
+    lua.setGlobal("myVal", "hello");
+    expect(lua.getGlobal("myVal")).toBe("hello");
+    expect(lua.globals().get("myVal")).toBe("hello");
   });
 });
 
