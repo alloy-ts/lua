@@ -1,7 +1,11 @@
-import console from "node:console";
+import { Lua } from "../index.js";
 
-export const main = () => {
-  return "Hello, world!";
-};
+export { Lua };
 
-console.log(main());
+/**
+ * Convenience helper to evaluate Lua code in a fresh Lua environment.
+ */
+export function evalLua(code: string): unknown {
+  const lua = Lua.full();
+  return lua.eval(code);
+}

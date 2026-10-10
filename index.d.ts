@@ -9,4 +9,14 @@
  */
 export declare const __napiBindingTarget: 'native' | 'wasm32-wasi' | 'wasm32-wasip1'
 
-export declare function add(left: number, right: number): number
+/** A Lua execution environment exposed via NAPI. */
+export declare class Lua {
+  /** Create a `Lua` instance with the full stdlib loaded. */
+  static full(): Lua
+  /** Create a `Lua` instance with core (non-I/O) stdlib loaded. */
+  static core(): Lua
+  /** Create an empty `Lua` instance. */
+  static empty(): Lua
+  /** Evaluate a Lua script/expression string and return the result value converted to JS. */
+  eval(code: string): unknown
+}
