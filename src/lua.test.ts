@@ -191,3 +191,32 @@ describe("error handling", () => {
     expect(() => lua.eval("error('boom')")).toThrow(/Lua runtime error/);
   });
 });
+
+describe("Lua host callbacks (register)", () => {
+  test("registers a JS callback that can be invoked from Lua", () => {
+    const lua = Lua.full();
+    lua.register("add", (a: number, b: number) => a + b);
+    expect(lua.eval("return add(10, 20)")).toBe(30);
+  });
+
+  test("passes strings and returns string results", () => {
+    const lua = Lua.full();
+    lua.register("greet", (name: string) => `Hello, ${name}!`);
+    expect(lua.eval("return greet('World')")).toBe("Hello, World!");
+  });
+
+  test("handles booleans and multiple arguments", () => {
+    const lua = Lua.full();
+    lua.register("check", (flag: boolean, val: number) => (flag ? val * 2 : val));
+    expect(lua.eval("return check(true, 5)")).toBe(10);
+    expect(lua.eval("return check(false, 5)")).toBe(5);
+  });
+
+  test("allows re-registering host callback under same name", () => {
+    const lua = Lua.full();
+    lua.register("calc", (x: number) => x + 1);
+    expect(lua.eval("return calc(5)")).toBe(6);
+    lua.register("calc", (x: number) => x * 10);
+    expect(lua.eval("return calc(5)")).toBe(50);
+  });
+});
