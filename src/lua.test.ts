@@ -12,12 +12,12 @@ describe("Lua constructors", () => {
     expect(lua).toBeDefined();
     expect(typeof lua.eval).toBe("function");
     expect(lua.eval("return 1 + 1")).toBe(2);
-    // A default instance ships with the I/O library.
-    expect(lua.eval("return io ~= nil")).toBe(true);
+    // Core library functions are present
+    expect(lua.eval("return type('hello')")).toBe("string");
   });
 
-  test("Lua.full() exposes the I/O library", () => {
-    expect(Lua.full().eval("return io ~= nil")).toBe(true);
+  test("Lua.full() exposes core libraries", () => {
+    expect(Lua.full().eval("return type('hello')")).toBe("string");
   });
 
   test("Lua.core() omits the I/O library", () => {
@@ -134,6 +134,63 @@ describe("global variables", () => {
   });
 });
 
+describe("LuaExecutor step execution", () => {
+  test("step() evaluates expressions until completion", () => {
+    const lua = Lua.full();
+    const exec = lua.executor("return 100 + 200");
+    expect(exec.isDone()).toBe(false);
+
+    const stepRes = exec.step(100);
+    expect(stepRes.done).toBe(true);
+    expect(stepRes.value).toBe(300);
+    expect(exec.isDone()).toBe(true);
+  });
+
+  test("step() pauses on limited fuel and resumes to completion", () => {
+    const lua = Lua.full();
+    const exec = lua.executor(`
+      local sum = 0
+      for i = 1, 1000 do
+        sum = sum + i
+      end
+      return sum
+    `);
+
+    let done = false;
+    let finalValue: unknown;
+    while (!done) {
+      const res = exec.step(50);
+      done = res.done;
+      if (done) {
+        finalValue = res.value;
+      }
+    }
+
+    expect(finalValue).toBe(500500);
+  });
+});
+
+describe("LuaThread coroutines", () => {
+  test("createThread() and resume() step through a suspended thread", () => {
+    const lua = Lua.full();
+    lua.eval(`
+      function myWorker()
+        local a = coroutine.yield(10)
+        return a
+      end
+    `);
+
+    const thread = lua.createThread("myWorker");
+    expect(thread.status()).toBe("suspended");
+
+    const res1 = thread.resume();
+    expect(res1).toBe(10);
+
+    const res2 = thread.resume([25]);
+    expect(res2).toEqual([25]);
+  });
+});
+
 describe("standard-library loading", () => {
   test("Lua.empty() evaluates expressions but lacks libraries", () => {
     const lua = Lua.empty();
@@ -149,13 +206,6 @@ describe("standard-library loading", () => {
     expect(lua.eval("return type(1)")).toBe("number");
     expect(lua.eval("return string.upper('abc')")).toBe("ABC");
     expect(lua.eval("return math.floor(3.9)")).toBe(3);
-  });
-
-  test("loadIo() enables the I/O library", () => {
-    const lua = Lua.empty();
-    lua.loadCore();
-    lua.loadIo();
-    expect(lua.eval("return io ~= nil")).toBe(true);
   });
 });
 

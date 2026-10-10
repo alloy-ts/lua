@@ -2,7 +2,9 @@ use napi::bindgen_prelude::{Env, FromNapiValue, JsObjectValue, Object, ToNapiVal
 use napi::{Error as NapiError, JsValue, Unknown};
 use napi_derive::napi;
 
-use ottavino::Lua as OLua;
+use ottavino::{Lua as OLua, StashedExecutor, StashedThread};
+use std::cell::RefCell;
+use std::rc::Rc;
 
 /// Snapshot of GC metrics.
 #[napi(object)]
@@ -13,10 +15,19 @@ pub struct GcMetrics {
     pub allocation_debt: f64,
 }
 
+/// Result of stepping an executor.
+#[napi(object)]
+pub struct StepResult<'js> {
+    /// True if the executor has completed execution or errored.
+    pub done: bool,
+    /// The return value if execution is complete, or undefined.
+    pub value: Option<Unknown<'js>>,
+}
+
 /// A Lua execution environment exported to JavaScript/TypeScript via NAPI.
 #[napi]
 pub struct Lua {
-    inner: OLua,
+    inner: Rc<RefCell<OLua>>,
 }
 
 #[napi]
@@ -25,7 +36,7 @@ impl Lua {
     #[napi(constructor)]
     pub fn new() -> Self {
         Lua {
-            inner: OLua::full(),
+            inner: Rc::new(RefCell::new(OLua::full())),
         }
     }
 
@@ -33,7 +44,7 @@ impl Lua {
     #[napi(factory)]
     pub fn empty() -> Self {
         Lua {
-            inner: OLua::empty(),
+            inner: Rc::new(RefCell::new(OLua::empty())),
         }
     }
 
@@ -41,7 +52,7 @@ impl Lua {
     #[napi(factory)]
     pub fn core() -> Self {
         Lua {
-            inner: OLua::core(),
+            inner: Rc::new(RefCell::new(OLua::core())),
         }
     }
 
@@ -49,38 +60,39 @@ impl Lua {
     #[napi(factory)]
     pub fn full() -> Self {
         Lua {
-            inner: OLua::full(),
+            inner: Rc::new(RefCell::new(OLua::full())),
         }
     }
 
     /// Load the core stdlib (base, coroutine, math, string, table).
     #[napi]
     pub fn load_core(&mut self) {
-        self.inner.load_core();
+        self.inner.borrow_mut().load_core();
     }
 
     /// Load the I/O stdlib.
     #[napi]
     pub fn load_io(&mut self) {
-        self.inner.load_io();
+        self.inner.borrow_mut().load_io();
     }
 
     /// Size of memory used by this Lua context, in bytes.
     #[napi]
     pub fn total_memory(&self) -> f64 {
-        self.inner.total_memory() as f64
+        self.inner.borrow().total_memory() as f64
     }
 
     /// Run garbage collection cycle.
     #[napi]
     pub fn gc_collect(&mut self) {
-        self.inner.gc_collect();
+        self.inner.borrow_mut().gc_collect();
     }
 
     /// Get garbage collector metrics.
     #[napi]
     pub fn gc_metrics(&self) -> GcMetrics {
-        let m = self.inner.gc_metrics();
+        let inner = self.inner.borrow();
+        let m = inner.gc_metrics();
         GcMetrics {
             total_allocation: m.total_allocation() as f64,
             allocation_debt: m.allocation_debt(),
@@ -93,7 +105,7 @@ impl Lua {
         let mut stashed_opt = None;
         let mut compile_err = None;
 
-        self.inner.enter(
+        self.inner.borrow_mut().enter(
             |ctx| match ottavino::Closure::load(ctx, Some("eval"), code.as_bytes()) {
                 Ok(closure) => {
                     let executor = ottavino::Executor::start(ctx, closure.into(), ());
@@ -111,14 +123,14 @@ impl Lua {
 
         let stashed = stashed_opt.unwrap();
 
-        if let Err(e) = self.inner.finish(&stashed) {
+        if let Err(e) = self.inner.borrow_mut().finish(&stashed) {
             return Err(NapiError::from_reason(format!("Lua finish error: {e}")));
         }
 
         let mut eval_result: Result<Unknown<'js>, NapiError> =
             Err(NapiError::from_reason("Execution failed"));
 
-        self.inner.enter(
+        self.inner.borrow_mut().enter(
             |ctx| match ctx.fetch(&stashed).take_result::<ottavino::Value>(ctx) {
                 Ok(Ok(val)) => {
                     eval_result = ottavino_value_to_js(env, ctx, val);
@@ -145,7 +157,7 @@ impl Lua {
         name: String,
     ) -> Result<Unknown<'js>, NapiError> {
         let mut get_result: Result<Unknown<'js>, NapiError> = ().into_unknown(env);
-        self.inner.enter(|ctx| {
+        self.inner.borrow_mut().enter(|ctx| {
             let key = ctx.intern(name.as_bytes());
             let val = ctx.globals().get_raw(ottavino::Value::String(key));
             get_result = ottavino_value_to_js(env, ctx, val);
@@ -164,6 +176,7 @@ impl Lua {
     ) -> Result<(), NapiError> {
         let mut set_result: Result<(), NapiError> = Ok(());
         self.inner
+            .borrow_mut()
             .enter(|ctx| match js_to_ottavino_value(env, ctx, value) {
                 Ok(lua_val) => {
                     let key = ctx.intern(name.as_bytes());
@@ -177,6 +190,256 @@ impl Lua {
             });
 
         set_result
+    }
+
+    /// Create a step-driven `LuaExecutor` for pacing execution with fuel limits.
+    #[napi]
+    pub fn executor(&mut self, code: String) -> Result<LuaExecutor, NapiError> {
+        let mut stashed = None;
+        let mut compile_err = None;
+
+        self.inner.borrow_mut().enter(|ctx| {
+            match ottavino::Closure::load(ctx, Some("executor"), code.as_bytes()) {
+                Ok(closure) => {
+                    let executor = ottavino::Executor::start(ctx, closure.into(), ());
+                    stashed = Some(ctx.stash(executor));
+                }
+                Err(e) => {
+                    compile_err = Some(e.to_string());
+                }
+            }
+        });
+
+        if let Some(e) = compile_err {
+            return Err(NapiError::from_reason(format!("Lua compile error: {e}")));
+        }
+
+        Ok(LuaExecutor {
+            lua: self.inner.clone(),
+            stashed: stashed.unwrap(),
+            is_done: false,
+        })
+    }
+
+    /// Create a Lua thread (coroutine) handle.
+    #[napi]
+    pub fn create_thread(&mut self, code_or_fn_name: String) -> Result<LuaThread, NapiError> {
+        let mut stashed_thread = None;
+        let mut compile_err = None;
+
+        self.inner.borrow_mut().enter(|ctx| {
+            let func_opt = if code_or_fn_name.contains(' ')
+                || code_or_fn_name.contains('=')
+                || code_or_fn_name.contains("return")
+            {
+                match ottavino::Closure::load(ctx, Some("thread"), code_or_fn_name.as_bytes()) {
+                    Ok(c) => Some(ottavino::Function::Closure(c)),
+                    Err(e) => {
+                        compile_err = Some(e.to_string());
+                        None
+                    }
+                }
+            } else {
+                let key = ctx.intern(code_or_fn_name.as_bytes());
+                let val = ctx.globals().get_raw(ottavino::Value::String(key));
+                if let ottavino::Value::Function(f) = val {
+                    Some(f)
+                } else {
+                    compile_err = Some(format!("Global '{code_or_fn_name}' is not a function"));
+                    None
+                }
+            };
+
+            if let Some(func) = func_opt {
+                let thread = ottavino::Thread::new(ctx);
+                let _ = thread.start_suspended(&ctx, func);
+                stashed_thread = Some(ctx.stash(thread));
+            }
+        });
+
+        if let Some(e) = compile_err {
+            return Err(NapiError::from_reason(e));
+        }
+
+        Ok(LuaThread {
+            lua: self.inner.clone(),
+            stashed: stashed_thread.unwrap(),
+        })
+    }
+}
+
+/// A step-driven VM executor wrapper.
+#[napi]
+pub struct LuaExecutor {
+    lua: Rc<RefCell<OLua>>,
+    stashed: StashedExecutor,
+    is_done: bool,
+}
+
+#[napi]
+impl LuaExecutor {
+    /// Step execution with the given fuel amount.
+    #[napi]
+    pub fn step<'js>(&mut self, env: &'js Env, fuel_amount: i32) -> Result<StepResult<'js>, NapiError> {
+        if self.is_done {
+            return Ok(StepResult {
+                done: true,
+                value: None,
+            });
+        }
+
+        let mut is_done = false;
+        let mut ret_val = None;
+        let mut step_err = None;
+
+        self.lua.borrow_mut().enter(|ctx| {
+            let executor = ctx.fetch(&self.stashed);
+            let mut fuel = ottavino::Fuel::with(fuel_amount);
+            let step_res = executor.step(ctx, &mut fuel);
+
+            match step_res {
+                Ok(is_finished) => {
+                    if is_finished {
+                        is_done = true;
+                        match executor.take_result::<ottavino::Value>(ctx) {
+                            Ok(Ok(val)) => match ottavino_value_to_js(env, ctx, val) {
+                                Ok(js_val) => {
+                                    ret_val = Some(js_val);
+                                }
+                                Err(e) => step_err = Some(e.to_string()),
+                            },
+                            Ok(Err(e)) => step_err = Some(e.to_string()),
+                            Err(e) => step_err = Some(e.to_string()),
+                        }
+                    }
+                }
+                Err(e) => {
+                    step_err = Some(e.to_string());
+                }
+            }
+        });
+
+        if let Some(e) = step_err {
+            self.is_done = true;
+            return Err(NapiError::from_reason(format!("Lua step error: {e}")));
+        }
+
+        self.is_done = is_done;
+
+        Ok(StepResult {
+            done: self.is_done,
+            value: ret_val,
+        })
+    }
+
+    /// Check if the executor has finished running.
+    #[napi]
+    pub fn is_done(&self) -> bool {
+        self.is_done
+    }
+}
+
+/// A wrapper around a Lua coroutine thread.
+#[napi]
+pub struct LuaThread {
+    lua: Rc<RefCell<OLua>>,
+    stashed: StashedThread,
+}
+
+#[napi]
+impl LuaThread {
+    /// Resume the thread coroutine with optional arguments.
+    #[napi]
+    pub fn resume<'js>(
+        &mut self,
+        env: &'js Env,
+        args: Option<Vec<Unknown<'js>>>,
+    ) -> Result<Unknown<'js>, NapiError> {
+        let mut result_opt = None;
+        let mut resume_err = None;
+
+        let stashed_exec = {
+            let mut inner = self.lua.borrow_mut();
+            let mut exec = None;
+
+            inner.enter(|ctx| {
+                let thread = ctx.fetch(&self.stashed);
+                let mut lua_args = Vec::new();
+
+                if let Some(args_vec) = args {
+                    for arg in args_vec {
+                        match js_to_ottavino_value(env, ctx, arg) {
+                            Ok(v) => lua_args.push(v),
+                            Err(e) => {
+                                resume_err = Some(e.to_string());
+                                return;
+                            }
+                        }
+                    }
+                }
+
+                if let Err(e) = thread.resume(ctx, lua_args) {
+                    resume_err = Some(format!("Failed to resume Lua thread: {e}"));
+                    return;
+                }
+
+                match ottavino::Executor::run(&ctx, thread) {
+                    Ok(executor) => {
+                        exec = Some(ctx.stash(executor));
+                    }
+                    Err(e) => {
+                        resume_err = Some(format!("Failed to run Lua executor for thread: {e}"));
+                    }
+                }
+            });
+
+            if let Some(e) = resume_err {
+                return Err(NapiError::from_reason(e));
+            }
+
+            exec.unwrap()
+        };
+
+        {
+            let mut inner = self.lua.borrow_mut();
+            if let Err(e) = inner.finish(&stashed_exec) {
+                return Err(NapiError::from_reason(format!("Lua finish error: {e}")));
+            }
+
+            inner.enter(|ctx| {
+                match ctx.fetch(&stashed_exec).take_result::<ottavino::Value>(ctx) {
+                    Ok(Ok(val)) => match ottavino_value_to_js(env, ctx, val) {
+                        Ok(js_val) => result_opt = Some(js_val),
+                        Err(e) => resume_err = Some(e.to_string()),
+                    },
+                    Ok(Err(e)) => resume_err = Some(format!("Lua thread error: {e}")),
+                    Err(e) => resume_err = Some(format!("Lua thread execution error: {e}")),
+                }
+            });
+        }
+
+        if let Some(e) = resume_err {
+            return Err(NapiError::from_reason(e));
+        }
+
+        Ok(result_opt.unwrap_or_else(|| ().into_unknown(env).unwrap()))
+    }
+
+    /// Get current status of thread ("normal", "suspended", "running", "dead").
+    #[napi]
+    pub fn status(&mut self) -> String {
+        let mut status_str = "dead".to_string();
+        self.lua.borrow_mut().enter(|ctx| {
+            let thread = ctx.fetch(&self.stashed);
+            status_str = match thread.mode() {
+                ottavino::ThreadMode::Normal => "normal",
+                ottavino::ThreadMode::Suspended => "suspended",
+                ottavino::ThreadMode::Running => "running",
+                _ => "dead",
+            }
+            .to_string();
+        });
+        status_str
     }
 }
 
