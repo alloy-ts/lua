@@ -180,7 +180,23 @@ describe("memory and garbage collection", () => {
   });
 });
 
-describe("error handling", () => {
+describe("calling JS functions from Lua", () => {
+  test("setGlobal allows JS functions to be called from Lua", () => {
+    const lua = Lua.full();
+    lua.setGlobal("add", (a: number, b: number) => a + b);
+    expect(lua.eval("return add(10, 20)")).toBe(30);
+  });
+
+  test("JS functions can receive and return complex types", () => {
+    const lua = Lua.full();
+    lua.setGlobal("greet", (user: { name: string }) => {
+      return `Hello, ${user.name}!`;
+    });
+    expect(lua.eval("return greet({ name = 'Alice' })")).toBe("Hello, Alice!");
+  });
+});
+
+describe("error handling & exception propagation", () => {
   test("syntax errors surface as a compile error", () => {
     const lua = Lua.full();
     expect(() => lua.eval("this is not lua @@@")).toThrow(/Lua compile error/);
@@ -189,5 +205,25 @@ describe("error handling", () => {
   test("runtime errors surface as a runtime error", () => {
     const lua = Lua.full();
     expect(() => lua.eval("error('boom')")).toThrow(/Lua runtime error/);
+  });
+
+  test("uncaught JS function errors propagate to JS try/catch", () => {
+    const lua = Lua.full();
+    lua.setGlobal("fail", () => {
+      throw new Error("something went wrong in JS");
+    });
+    expect(() => lua.eval("fail()")).toThrow(/something went wrong in JS/);
+  });
+
+  test("JS function errors can be caught inside Lua using pcall", () => {
+    const lua = Lua.full();
+    lua.setGlobal("fail", () => {
+      throw new Error("js error");
+    });
+    const result = lua.eval("local ok, err = pcall(fail); return { ok = ok, err = tostring(err) }");
+    expect(result).toEqual({
+      ok: false,
+      err: expect.stringContaining("js error"),
+    });
   });
 });

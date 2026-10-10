@@ -1,4 +1,4 @@
-use napi::bindgen_prelude::{Env, FromNapiValue, JsObjectValue, Object, ToNapiValue, ValueType};
+use napi::bindgen_prelude::{Env, FromNapiValue, Function, JsObjectValue, Object, ToNapiValue, ValueType};
 use napi::{Error as NapiError, JsValue, Unknown};
 use napi_derive::napi;
 
@@ -282,6 +282,74 @@ fn js_to_ottavino_value<'gc>(
                 }
                 Ok(ottavino::Value::Table(table))
             }
+        }
+        ValueType::Function => {
+            let js_fn: Function<Vec<Unknown>, Unknown> =
+                unsafe { Function::from_napi_value(env.raw(), js_val.raw())? };
+            let js_ref = js_fn.create_ref()?;
+            let raw_env = env.raw();
+
+            let callback = ottavino::Callback::from_fn(&ctx, move |ctx, _exec, mut stack| {
+                let env = Env::from_raw(raw_env);
+                let js_fn = js_ref
+                    .borrow_back(&env)
+                    .map_err(|e| ottavino::RuntimeError::new(e))?;
+
+                let args_len = stack.len();
+                let mut raw_args = Vec::with_capacity(args_len);
+                for i in 0..args_len {
+                    let val = stack[i];
+                    let js_val = ottavino_value_to_js(&env, ctx, val)
+                        .map_err(|e| ottavino::RuntimeError::new(e))?;
+                    raw_args.push(js_val.raw());
+                }
+
+                let mut recv = std::ptr::null_mut();
+                unsafe { napi::sys::napi_get_undefined(env.raw(), &mut recv) };
+
+                let mut raw_result = std::ptr::null_mut();
+                let status = unsafe {
+                    napi::sys::napi_call_function(
+                        env.raw(),
+                        recv,
+                        js_fn.raw(),
+                        raw_args.len(),
+                        raw_args.as_ptr(),
+                        &mut raw_result,
+                    )
+                };
+
+                if status != napi::sys::Status::napi_ok {
+                    let mut is_pending = false;
+                    unsafe { napi::sys::napi_is_exception_pending(env.raw(), &mut is_pending) };
+                    if is_pending {
+                        let mut raw_err = std::ptr::null_mut();
+                        unsafe { napi::sys::napi_get_and_clear_last_exception(env.raw(), &mut raw_err) };
+                        let js_err = unsafe { Unknown::from_raw_unchecked(env.raw(), raw_err) };
+                        let err_str = js_err
+                            .coerce_to_string()
+                            .and_then(|s| s.into_utf8())
+                            .map(|u| u.as_str().unwrap_or("JS Exception").to_string())
+                            .unwrap_or_else(|_| "JS Exception".to_string());
+                        return Err(ottavino::RuntimeError::new(NapiError::from_reason(err_str)).into());
+                    }
+                    return Err(ottavino::RuntimeError::new(NapiError::from_reason(format!("NAPI call failed with status: {status:?}"))).into());
+                }
+
+                let js_result = unsafe { Unknown::from_raw_unchecked(env.raw(), raw_result) };
+
+                let lua_res = js_to_ottavino_value(&env, ctx, js_result)
+                    .map_err(|e| ottavino::RuntimeError::new(e))?;
+
+                stack.clear();
+                stack.push_back(lua_res);
+
+                Ok(ottavino::CallbackReturn::Return)
+            });
+
+            Ok(ottavino::Value::Function(ottavino::Function::Callback(
+                callback,
+            )))
         }
         _ => Ok(ottavino::Value::Nil),
     }

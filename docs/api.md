@@ -30,7 +30,10 @@ The `@alloy-ts/lua` library wraps the Ottavino Lua 5.4 VM using NAPI-RS.
 #### Global Variable Management
 
 - **`lua.setGlobal(name: string, value: unknown): void`**
-  Binds a global variable in the Lua VM environment (`_ENV` / `globals()`). JavaScript objects and arrays are converted into Lua tables.
+  Binds a global variable in the Lua VM environment (`_ENV` / `globals()`).
+  - Primitive values (`number`, `string`, `boolean`, `null`, `undefined`) are mapped directly.
+  - Objects and arrays are converted into Lua tables.
+  - **Functions (`Function`)**: Registered as callable Ottavino `Callback` objects in Lua. When invoked from Lua, arguments on the Lua stack are converted to JS values, passed to the JS function, and the returned JS value is pushed back onto the Lua stack.
 
 - **`lua.getGlobal(name: string): unknown`**
   Retrieves a global variable from the Lua VM environment and converts it to its corresponding JavaScript representation.
@@ -78,13 +81,27 @@ export interface GcMetrics {
 | `string`             | `string`              | UTF-8 lossy conversion from interned Lua strings.                          |
 | `table` (sequential) | `Array`               | Arrays with length > 0 map to JS arrays (1-indexed in Lua).                |
 | `table` (keyed)      | `Object`              | Keyed tables map to plain JS objects.                                      |
-| `function`           | `"[lua function]"`    | Placeholder string.                                                        |
+| `function`           | `"[lua function]"`    | JS functions passed via `setGlobal` become callable `Callback`s in Lua.    |
 | `thread`             | `"[lua thread]"`      | Placeholder string.                                                        |
 | `userdata`           | `"[lua userdata]"`    | Placeholder string.                                                        |
 
 ---
 
-## 3. Ottavino Crate Architecture & Internal Primitives
+## 3. Error Handling & Exception Propagation
+
+1. **Lua Syntax / Compile Errors**:
+   Occur when evaluating syntactically invalid Lua code. Throws a JavaScript `Error` with prefix `Lua compile error: ...`.
+
+2. **Lua Runtime Errors**:
+   Occur when Lua code calls `error(...)` or performs invalid operations (e.g., calling a non-function). Throws a JavaScript `Error` with prefix `Lua runtime error: ...`.
+
+3. **JS Function Callback Exceptions**:
+   - **Caught in Lua**: When a registered JS function throws an exception during Lua execution, Lua's `pcall` / `xpcall` can catch it. `pcall` returns `false` and the error message as a string.
+   - **Uncaught in Lua**: If the exception is not caught by `pcall` within Lua, it propagates out of `lua.eval()` and throws a JavaScript `Error` containing the original JS exception message.
+
+---
+
+## 4. Ottavino Crate Architecture & Internal Primitives
 
 Ottavino is a stackless, garbage-collected Lua 5.4 VM written in pure Rust built upon `gc-arena`.
 
@@ -133,7 +150,7 @@ Ottavino is a stackless, garbage-collected Lua 5.4 VM written in pure Rust built
 
 ---
 
-## 4. Feature Gap Analysis & Implementation Roadmap
+## 5. Feature Gap Analysis & Implementation Roadmap
 
 Comparing our NAPI bindings against Ottavino's capabilities:
 
@@ -142,6 +159,8 @@ Comparing our NAPI bindings against Ottavino's capabilities:
 - [x] Basic VM lifecycle (`empty`, `core`, `full`, stdlib loading).
 - [x] Uninterrupted execution via `lua.eval()`.
 - [x] Global variables get/set (`setGlobal`, `getGlobal`).
+- [x] Host function callbacks via `setGlobal(name, jsFn)`.
+- [x] Exception propagation between JS and Lua.
 - [x] GC metrics & explicit collection (`totalMemory`, `gcCollect`, `gcMetrics`).
 - [x] Primitive and nested array/object value marshalling.
 
@@ -158,18 +177,7 @@ Comparing our NAPI bindings against Ottavino's capabilities:
   }
   ```
 
-#### 2. Host Callbacks (`lua.registerCallback(name, jsFn)`)
-
-- **Ottavino Primitive:** `Callback::from_fn`, `Sequence`.
-- **Use Case:** Exposing custom JavaScript functions to Lua scripts (e.g. custom APIs, file system access, network calls).
-- **JS Design:**
-  ```typescript
-  lua.registerCallback("my_func", (...args: unknown[]) => {
-    return args[0] + 42;
-  });
-  ```
-
-#### 3. Coroutine / Thread API
+#### 2. Coroutine / Thread API
 
 - **Ottavino Primitive:** `Thread<'gc>`, `coroutine.resume`, `coroutine.yield`.
 - **Use Case:** Exposing `Thread` objects to JS rather than `"[lua thread]"` strings, allowing JS to resume and yield Lua coroutines.
