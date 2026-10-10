@@ -4,7 +4,7 @@
 > using Lua's C/Rust VM API via NAPI.
 
 This library uses [NAPI-RS](https://napi.rs/) and
-[Ottavino](https://github.com/kyren/ottavino) (a pure Rust Lua 5.4 VM
+[Ottavino](https://github.com/kyren/ottavino) / [Piccolo](https://github.com/kyren/piccolo) (a pure Rust Lua 5.4 VM
 implementation) to safely expose Lua's API to Node.js and JavaScript
 environments without external native C dependencies.
 
@@ -12,6 +12,7 @@ environments without external native C dependencies.
 
 - **Full Lua Environment**: Create sandboxed Lua states with empty, core, or
   full standard libraries.
+- **Stackless Interpreter**: Powered by Ottavino/Piccolo's stackless VM architecture supporting cancellation, fuel pacing, and symmetric coroutines (`coroutine.yieldto`).
 - **Eval Lua Code**: Run arbitrary Lua scripts and return JavaScript primitives,
   objects, and arrays.
 - **Global Variable Binding**: Get and set global variables in the Lua VM
@@ -52,56 +53,46 @@ console.log(`Memory used: ${lua.totalMemory()} bytes`);
 lua.gcCollect();
 ```
 
-## API Reference
+## Examples
 
-### Constructors
+We provide several runnable TypeScript example scripts in the `examples/` directory:
 
-- `Lua.full()` or `new Lua()`: Instantiates a Lua VM with the full standard
-  library loaded (base, coroutine, math, string, table, I/O).
-- `Lua.core()`: Instantiates a Lua VM with core standard libraries loaded (no
-  I/O).
+- [`examples/primitives.ts`](examples/primitives.ts) — Defining and using Lua primitive types, constants, and variables.
+- [`examples/object.ts`](examples/object.ts) — Defining and manipulating Lua objects (tables) and arrays from JS/TS objects.
+- [`examples/function.ts`](examples/function.ts) — Defining and calling Lua functions, higher-order functions, and closures.
+- [`examples/async.ts`](examples/async.ts) — Using Lua coroutines and integrating them with JS Promises/async workflows.
+- [`examples/memory.ts`](examples/memory.ts) — Inspecting memory allocation and triggering garbage collection.
+- [`examples/stdlib.ts`](examples/stdlib.ts) — Standard library sandboxing with `Lua.empty()`, `Lua.core()`, `Lua.full()`, `loadCore()`, and `loadIo()`.
+
+You can run any example using `@oxc-node/core`:
+
+```bash
+node --import @oxc-node/core/register examples/primitives.ts
+node --import @oxc-node/core/register examples/object.ts
+node --import @oxc-node/core/register examples/function.ts
+node --import @oxc-node/core/register examples/async.ts
+node --import @oxc-node/core/register examples/memory.ts
+node --import @oxc-node/core/register examples/stdlib.ts
+```
+
+## Documentation
+
+- [`docs/api.md`](docs/api.md) — Detailed JS/TS API reference for `@alloy-ts/lua` and mapping to Ottavino Rust types.
+- [`docs/lang-guide.md`](docs/lang-guide.md) — Comprehensive guide covering Lua 5.4 language basics, standard library modules, Ottavino/Piccolo stackless architecture, fuel pacing, pre-emptive tasklets, symmetric coroutines (`coroutine.yieldto`), and sandboxing controls.
+
+### Summary of `Lua` Methods
+
+- `Lua.full()` or `new Lua()`: Instantiates a Lua VM with full standard libraries.
+- `Lua.core()`: Instantiates a Lua VM with core standard libraries loaded (no I/O).
 - `Lua.empty()`: Instantiates an empty Lua VM with no standard libraries.
-
-### Methods
-
-- `lua.eval(code: string): unknown`: Compiles and executes the given Lua code
-  string, returning the result as a JavaScript value.
-- `lua.setGlobal(name: string, value: unknown): void`: Sets a global variable in
-  the Lua VM environment.
-- `lua.getGlobal(name: string): unknown`: Retrieves a global variable from the
-  Lua VM environment.
-- `lua.loadCore(): void`: Loads core standard libraries into an existing Lua
-  state.
-- `lua.loadIo(): void`: Loads I/O standard libraries into an existing Lua state.
-- `lua.totalMemory(): number`: Returns total memory used by the Lua VM in bytes.
-- `lua.gcCollect(): void`: Triggers a full garbage collection cycle in the Lua
-  VM.
-- `lua.gcMetrics(): GcMetrics`: Returns garbage collector metrics.
-
-### Value Conversion
-
-Results of `eval` and values read via `getGlobal` are converted from Lua values
-to JavaScript as follows:
-
-| Lua value            | JavaScript value                        |
-| -------------------- | --------------------------------------- |
-| `nil`                | `undefined`                             |
-| `boolean`            | `boolean`                               |
-| `integer`            | `number`                                |
-| `float`              | `number`                                |
-| `string`             | `string`                                |
-| `table` (sequential) | `Array`                                 |
-| `table` (keyed)      | `Object`                                |
-| `function`           | `"[lua function]"` (placeholder string) |
-| `thread`             | `"[lua thread]"` (placeholder string)   |
-| `userdata`           | `"[lua userdata]"` (placeholder string) |
-
-Conversely, `setGlobal` converts JavaScript `undefined`/`null` → `nil`,
-`boolean` → `boolean`, integer-valued `number` → Lua `integer` (otherwise
-`number`), `string` → `string`, `Array` → sequential `table`, and plain `Object`
-→ keyed `table`. A Lua `table` is treated as an `Array` whenever its sequential
-length is greater than zero, so a table that mixes a sequence with hash keys may
-lose the hash entries.
+- `lua.eval(code: string): unknown`: Executes Lua code and returns converted JS values.
+- `lua.setGlobal(name: string, value: unknown): void`: Sets a global variable in the Lua VM.
+- `lua.getGlobal(name: string): unknown`: Retrieves a global variable from the Lua VM.
+- `lua.loadCore(): void`: Loads core standard libraries into an existing instance.
+- `lua.loadIo(): void`: Loads I/O standard libraries into an existing instance.
+- `lua.totalMemory(): number`: Returns memory used by the Lua VM in bytes.
+- `lua.gcCollect(): void`: Runs garbage collection.
+- `lua.gcMetrics(): GcMetrics`: Returns memory allocator metrics.
 
 ## Development
 
