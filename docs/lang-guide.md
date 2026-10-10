@@ -1,6 +1,6 @@
 # Lua Language Guide & Ottavino VM Architecture
 
-This guide covers the fundamentals of the **Lua 5.4** scripting language, its standard library modules, and the internal architecture of **`ottavino`** (formerly Piccolo) — the pure Rust Lua 5.4 implementation powering this NAPI addon.
+This guide covers the fundamentals of the **Lua 5.4** scripting language, its standard library modules, error handling mechanisms, and the internal architecture of **`ottavino`** (formerly Piccolo) — the pure Rust Lua 5.4 implementation powering this NAPI addon.
 
 ---
 
@@ -41,6 +41,15 @@ user.role = "admin"
 -- Tables as arrays (1-indexed in Lua standard)
 local list = {"a", "b", "c"}
 ```
+
+### Error Handling in Lua & JS Cross-Boundary
+Lua provides built-in mechanisms for raising and trapping runtime errors:
+- **`error(message)`**: Explicitly raises an error.
+- **`assert(v, message)`**: Raises an error if `v` evaluates to false/nil.
+- **`pcall(f, ...)`**: Protected call. Executes function `f` and returns `ok, result_or_error`.
+- **`xpcall(f, msgh)`**: Protected call with custom error handler `msgh`.
+
+When an error escapes a top-level Lua evaluation, the NAPI boundary intercepts the `ottavino::Error` and converts it into a standard JavaScript `Error` exception, allowing JS callers to handle Lua errors using standard `try { ... } catch (err) { ... }` blocks.
 
 ---
 

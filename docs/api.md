@@ -6,8 +6,6 @@ This document provides a comprehensive comparison between the low-level Rust **`
 
 ## 1. Ottavino Crate Primitives vs. NAPI Binding Mapping
 
-Yes! You have covered all key NAPI methods for embedding and controlling Lua in Node.js. Below is a detailed breakdown mapping each underlying `ottavino` Rust type to how it is encapsulated or exposed in our NAPI interface:
-
 | Ottavino Crate Primitives | Description in Ottavino | NAPI Interface / Mapping | Coverage Status |
 | :--- | :--- | :--- | :--- |
 | **`ottavino::Lua`** | Top-level VM state managing the garbage-collection arena (`gc-arena`). | `Lua` class (`Lua.full()`, `Lua.core()`, `Lua.empty()`) | **Exposed** |
@@ -26,7 +24,17 @@ Yes! You have covered all key NAPI methods for embedding and controlling Lua in 
 
 ---
 
-## 2. NAPI API Specification
+## 2. Error Handling & Exception Boundaries
+
+When evaluating Lua code via `lua.eval(code)`:
+- **Syntax Errors**: If the Lua parser encounters invalid syntax, a native JavaScript `Error` is thrown (`parse error`).
+- **Runtime Errors**: If Lua encounters an unhandled runtime error (e.g., `error("msg")`, `assert(false)`, or type mismatch operations), the underlying Rust `ottavino::Error` is intercepted and thrown as a native JavaScript `Error`.
+- **JS try/catch**: You can wrap `lua.eval(...)` calls in JavaScript `try { ... } catch (err) { ... }` blocks to catch Lua errors seamlessly.
+- **Native Lua pcall/xpcall**: Within Lua scripts, errors can be caught natively using `pcall(fn)` or `xpcall(fn, msgh)`.
+
+---
+
+## 3. NAPI API Specification
 
 ### `Lua` Class
 
@@ -83,7 +91,7 @@ The primary interface for instantiating and controlling embedded Lua environment
 
 ---
 
-## 3. Helper Functions & Interfaces
+## 4. Helper Functions & Interfaces
 
 ### `evalLua(code: string): unknown`
 Helper function exported from `src/main.ts` that instantiates a full `Lua` VM and evaluates the provided Lua code string.

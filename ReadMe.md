@@ -7,6 +7,7 @@ This module provides TypeScript/JavaScript bindings for embedding and executing 
 - **Full Lua Environment**: Run Lua scripts with standard library capabilities.
 - **High Performance**: Native Rust binding using NAPI-RS for minimal overhead.
 - **Seamless JS Interop**: Evaluate Lua expressions, set global variables (`setGlobal`), and retrieve global variables (`getGlobal`).
+- **Error Handling**: Lua syntax and runtime exceptions are caught across the NAPI boundary and thrown as JavaScript `Error` objects in JS try/catch blocks.
 - **Memory & GC Control**: Monitor VM memory usage (`totalMemory`) and trigger manual GC (`gcCollect`).
 - **API Documentation**: Complete API mapping and method reference in [docs/api.md](./docs/api.md).
 - **Language Guide**: Lua 5.4 basics, stdlib, and `ottavino` stackless VM architecture in [docs/lang-guide.md](./docs/lang-guide.md).
@@ -58,6 +59,20 @@ console.log(result); // Output: localhost:8080
 console.log("MAX_ITEMS:", lua.getGlobal("MAX_ITEMS")); // Output: 100
 ```
 
+### Error Handling with JS try/catch
+
+```typescript
+import { Lua } from "./src/main.ts";
+
+const lua = Lua.full();
+
+try {
+  lua.eval("error('something went wrong in Lua script')");
+} catch (err: any) {
+  console.error("Caught Lua error in JS:", err.message);
+}
+```
+
 ## Examples Directory
 
 Check out executable TypeScript examples in the `examples/` directory:
@@ -67,6 +82,7 @@ Check out executable TypeScript examples in the `examples/` directory:
 - `examples/globals.ts` — Comprehensive global variable management
 - `examples/function.ts` — Defining and calling Lua functions
 - `examples/coroutines.ts` — Generator patterns with Lua coroutines
+- `examples/error.ts` — Error handling and JS try/catch integration
 - `examples/memory.ts` — Memory tracking and manual GC
 - `examples/stdlib.ts` — Sandboxing and stdlib loading
 
