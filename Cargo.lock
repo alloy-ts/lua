@@ -205,6 +205,7 @@ dependencies = [
  "napi-build",
  "napi-derive",
  "ottavino",
+ "ottavino-gc-arena",
 ]
 
 [[package]]
