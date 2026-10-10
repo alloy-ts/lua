@@ -14,7 +14,7 @@ environments without external native C dependencies.
 - **Eval Lua Code**: Run arbitrary Lua scripts and return JavaScript primitives,
   objects, and arrays.
 - **Global Variable Binding**: Get and set global variables in the Lua VM
-  directly from JS/TS.
+  directly from JS/TS via `lua.globals()`.
 - **GC & Memory Controls**: Monitor memory consumption (`totalMemory()`) and
   manually trigger garbage collection (`gcCollect()`).
 
@@ -33,14 +33,19 @@ console.log(result); // 7
 const greeting = lua.eval("return 'Hello, ' .. 'Lua!'");
 console.log(greeting); // "Hello, Lua!"
 
+// Access global variables handle
+const globals = lua.globals();
+
 // Set global variables from JS/TS
-lua.setGlobal("multiplier", 10);
-lua.setGlobal("data", { name: "Lua", active: true });
+globals.set("multiplier", 10);
+globals.set("data", { name: "Lua", active: true });
+globals.set("add", (a: number, b: number) => a + b);
 
 // Read global variables and use them in Lua code
-console.log(lua.getGlobal("multiplier")); // 10
+console.log(globals.get("multiplier")); // 10
 const calculated = lua.eval("return data.name .. ' x' .. multiplier");
 console.log(calculated); // "Lua x10"
+console.log(lua.eval("return add(5, 10)")); // 15
 
 // Working with Lua tables (returned as JS objects or arrays)
 const arrayResult = lua.eval("return { 10, 20, 30 }");
@@ -63,12 +68,10 @@ lua.gcCollect();
 
 ### Methods
 
+- `lua.globals(): Globals`: Returns the `Globals` handle for interacting with
+  global variables (`_ENV` / `ctx.globals()`), mirroring Ottavino's Rust API.
 - `lua.eval(code: string): unknown`: Compiles and executes the given Lua code
   string, returning the result as a JavaScript value.
-- `lua.setGlobal(name: string, value: unknown): void`: Sets a global variable in
-  the Lua VM environment.
-- `lua.getGlobal(name: string): unknown`: Retrieves a global variable from the
-  Lua VM environment.
 - `lua.loadCore(): void`: Loads core standard libraries into an existing Lua
   state.
 - `lua.loadIo(): void`: Loads I/O standard libraries into an existing Lua state.
@@ -77,9 +80,14 @@ lua.gcCollect();
   VM.
 - `lua.gcMetrics(): GcMetrics`: Returns garbage collector metrics.
 
+### Globals API
+
+- `globals.get(name: string): unknown`: Retrieves a global variable from the Lua environment.
+- `globals.set(name: string, value: unknown): void`: Binds a global variable in the Lua environment. Converts primitives, JS objects/arrays to Lua tables, and JS functions to callable Ottavino `Callback`s.
+
 ### Value Conversion
 
-Results of `eval` and values read via `getGlobal` are converted from Lua values
+Results of `eval` and values read via `globals.get` are converted from Lua values
 to JavaScript as follows:
 
 | Lua value            | JavaScript value                        |
@@ -95,10 +103,10 @@ to JavaScript as follows:
 | `thread`             | `"[lua thread]"` (placeholder string)   |
 | `userdata`           | `"[lua userdata]"` (placeholder string) |
 
-Conversely, `setGlobal` converts JavaScript `undefined`/`null` → `nil`,
+Conversely, `globals.set` converts JavaScript `undefined`/`null` → `nil`,
 `boolean` → `boolean`, integer-valued `number` → Lua `integer` (otherwise
-`number`), `string` → `string`, `Array` → sequential `table`, and plain `Object`
-→ keyed `table`. A Lua `table` is treated as an `Array` whenever its sequential
+`number`), `string` → `string`, `Array` → sequential `table`, plain `Object`
+→ keyed `table`, and JS functions to callable Ottavino `Callback`s. A Lua `table` is treated as an `Array` whenever its sequential
 length is greater than zero, so a table that mixes a sequence with hash keys may
 lose the hash entries.
 
