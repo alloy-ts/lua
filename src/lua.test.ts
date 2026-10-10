@@ -132,6 +132,34 @@ describe("global variables", () => {
     const lua = Lua.full();
     expect(lua.getGlobal("does_not_exist")).toBeUndefined();
   });
+
+  test("globals() API gets and sets global variables", () => {
+    const lua = Lua.full();
+    const globals = lua.globals();
+    globals.set("message", "hello via globals()");
+    expect(globals.get("message")).toBe("hello via globals()");
+    expect(lua.eval("return message")).toBe("hello via globals()");
+  });
+
+  test("globals() allows calling JS functions from Lua", () => {
+    const lua = Lua.full();
+    lua.globals().set("jsAdd", (a: number, b: number) => a + b);
+    expect(lua.eval("return jsAdd(10, 20)")).toBe(30);
+  });
+
+  test("JS callback errors propagate to Lua pcall or host eval", () => {
+    const lua = Lua.full();
+    lua.globals().set("failingFn", () => {
+      throw new Error("JS error inside callback");
+    });
+
+    // Lua pcall catches callback error
+    const pcallRes = lua.eval("return pcall(failingFn)") as boolean;
+    expect(pcallRes).toBe(false);
+
+    // Uncaught callback error propagates to JS try/catch
+    expect(() => lua.eval("failingFn()")).toThrow();
+  });
 });
 
 describe("standard-library loading", () => {
