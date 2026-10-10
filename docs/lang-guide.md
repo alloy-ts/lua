@@ -1,6 +1,6 @@
 # Lua 5.4 & Ottavino (Piccolo) Language Guide
 
-This guide covers Lua 5.4 language basics, the standard library provided by **Ottavino** (a fork of _Piccolo_), and its unique **stackless interpreter design**.
+This guide covers Lua 5.4 language basics, the standard library provided by **Ottavino** (a fork of _Piccolo_), its unique **stackless interpreter design**, and **cross-boundary exception conversion**.
 
 ---
 
@@ -67,7 +67,52 @@ Core functions implicitly available in global scope:
 
 ---
 
-## 3. Ottavino (Piccolo) Architecture & Stackless Interpreter Design
+## 3. Cross-Boundary Exception Conversion & Error Handling
+
+Errors flow seamlessly between JavaScript/TypeScript and Lua across the NAPI boundary:
+
+```
+[JavaScript/TypeScript] <======= NAPI Bridge ======> [Lua VM / Ottavino]
+   try / catch (err)     <-- Lua error converted --     error("msg")
+   throw new Error()     -- JS error converted  -->   pcall() / error
+```
+
+### 1. Lua Errors -> JavaScript Exceptions
+
+When a Lua script throws a runtime error (`error("message")`) or fails parsing due to a syntax error, Ottavino's runtime error is converted into a native JavaScript `Error` exception:
+
+```ts
+try {
+  lua.eval("error('Explicit Lua runtime error!')");
+} catch (err: any) {
+  console.log(err.message); // "lua error: Explicit Lua runtime error!"
+}
+```
+
+### 2. JavaScript Callback Errors -> Lua Runtime Errors
+
+When a registered host JavaScript function (`registerCallback`) throws an exception during execution, NAPI catches the exception and converts it into an `ottavino::RuntimeError` inside the VM stack:
+
+```ts
+lua.registerCallback("validateValue", (val: number) => {
+  if (val < 0) throw new Error("Negative value not allowed!");
+  return val;
+});
+
+// Inside Lua, pcall() can catch the converted JS error
+const result = lua.eval(`
+  local ok, err = pcall(function() return validateValue(-10) end)
+  return { ok = ok, err = err }
+`);
+```
+
+### 3. Unhandled Callback Error Propagation
+
+If a JS callback error is thrown and Lua does _not_ handle it with `pcall`, the exception propagates all the way back out through `lua.eval()` as a JavaScript exception.
+
+---
+
+## 4. Ottavino (Piccolo) Architecture & Stackless Interpreter Design
 
 Ottavino is a pure-Rust implementation of Lua 5.4 derived from _Piccolo_.
 
@@ -98,7 +143,7 @@ Standard Lua supports _asymmetric coroutines_ (yielding control only back to the
 
 ---
 
-## 4. The "Big Lie" & C API Limitations vs. Stackless Rust
+## 5. The "Big Lie" & C API Limitations vs. Stackless Rust
 
 In PUC-Rio Lua, yielding from nested C callbacks (a "Lua -> C -> Lua" sandwich like `table.sort` with a Lua comparator) requires complex `lua_callk` / `lua_yieldk` continuation functions because a C `longjmp` destroys the C stack. Most C stdlib functions cannot be safely yielded across.
 
@@ -109,14 +154,14 @@ Ottavino solves this at the architecture level:
 
 ---
 
-## 5. Rust Coroutines, Lua Coroutines, and Snarfing
+## 6. Rust Coroutines, Lua Coroutines, and Snarfing
 
 - **Snarfing**: Incorporating semantics from the host language into the inner embedded language.
 - Ottavino uses `gc-arena` for garbage collection isolation and reifies VM call frames so that Lua garbage collection can take place safely between `enter` mutator calls when no GC pointers exist on the Rust stack.
 
 ---
 
-## 6. Zooming Out: Safety, Isolation, and Sandboxing
+## 7. Zooming Out: Safety, Isolation, and Sandboxing
 
 - **Multiple Isolated VMs**: Multiple `Lua` instances can run concurrently in the same Node.js process without shared global state.
 - **Sandboxing**: By choosing between `Lua.empty()`, `Lua.core()`, and `Lua.full()`, host applications can completely strip file I/O or system access for untrusted script execution.

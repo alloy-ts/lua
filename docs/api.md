@@ -1,6 +1,6 @@
 # API Reference
 
-This document provides a detailed reference for the exported `Lua` class, `Executor` class, types, and API coverage provided by the native NAPI module (`dist/index.js`).
+This document provides a detailed reference for the exported `Lua` class, `Executor` class, types, exception conversion, and API coverage provided by the native NAPI module (`dist/index.js`).
 
 ## Exported Members
 
@@ -59,6 +59,16 @@ Sets a global variable in the Lua VM environment. Converts JavaScript primitives
 #### `lua.getGlobal(name: string): unknown`
 
 Retrieves a global variable from the Lua VM environment as a converted JavaScript value.
+
+---
+
+### Exception Conversion & Error Propagation
+
+Errors automatically convert across the NAPI language boundary:
+
+1. **Lua Errors -> JS Exceptions**: Runtime errors (`error("msg")`) or syntax errors in `lua.eval()` are mapped to `napi::Error` and thrown as standard JavaScript exceptions.
+2. **JS Callback Exceptions -> Lua Errors**: Exceptions thrown inside a registered `registerCallback` JS function are converted to `ottavino::RuntimeError` in Lua, which can be caught via Lua's `pcall()`.
+3. **Unhandled Propagation**: Uncaught JS callback exceptions propagate back out through `lua.eval()` as a re-thrown JavaScript `Error`.
 
 ---
 
