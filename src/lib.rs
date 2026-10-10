@@ -1,6 +1,3 @@
-use napi_derive::napi;
+pub mod lua;
 
-#[napi]
-pub fn add(left: i32, right: i32) -> i32 {
-  left + right
-}
+pub use lua::{GcMetrics, Lua};
