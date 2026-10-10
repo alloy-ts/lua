@@ -52,6 +52,23 @@ console.log(`Memory used: ${lua.totalMemory()} bytes`);
 lua.gcCollect();
 ```
 
+## Examples
+
+Run example scripts using `node --import @oxc-node/core/register`:
+
+- **Primitives, Variables & Constants**:
+  ```bash
+  node --import @oxc-node/core/register examples/primitives.ts
+  ```
+- **Objects, Arrays & Tables**:
+  ```bash
+  node --import @oxc-node/core/register examples/object.ts
+  ```
+- **Merged Globals & Detailed Usage**:
+  ```bash
+  node --import @oxc-node/core/register examples/variables.ts
+  ```
+
 ## API Reference
 
 ### Constructors
