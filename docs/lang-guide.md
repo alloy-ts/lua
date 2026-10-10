@@ -1,89 +1,143 @@
-# Lua 5.4 & Ottavino Language Guide
+# Lua 5.4 & Ottavino / Piccolo Language & Architecture Guide
 
-This guide provides an overview of **Lua 5.4** language basics, standard libraries, and how the **Ottavino** pure-Rust VM executes Lua in JavaScript/Node.js environments.
+This document covers **Lua 5.4** language fundamentals, standard library features, and the architecture of **Piccolo / Ottavino**—the pure-Rust, stackless interpreter driving `@alloy-ts/lua`.
 
 ---
 
-## 1. Lua 5.4 Syntax & Language Basics
+## Table of Contents
 
-### Primitives & Types
-Lua has eight basic types:
-- `nil`: Represents absence of value (`null`/`undefined` in JS).
-- `boolean`: `true` or `false`.
-- `number`: Represents both 64-bit integers (`integer`) and 64-bit floating-point numbers (`float`).
-- `string`: Immutable sequences of bytes or UTF-8 characters.
-- `table`: The sole data-structuring mechanism in Lua (associative array).
-- `function`: First-class closures.
-- `thread`: Coroutines for cooperative multitasking.
-- `userdata`: Custom C/Rust host structures.
+- [1. Lua 5.4 Basics](#1-lua-54-basics)
+- [2. Metatables & Metamethods](#2-metatables--metamethods)
+- [3. Standard Library Overview](#3-standard-library-overview)
+- [4. The Architecture of Piccolo / Ottavino](#4-the-architecture-of-piccolo--ottavino)
+  - [A "Stackless" Interpreter Design](#a-stackless-interpreter-design)
+  - [Benefits of Stackless](#benefits-of-stackless)
+    - [Cancellation](#cancellation)
+    - [Pre-emptive Concurrency](#pre-emptive-concurrency)
+    - [Fuel, Pacing, and Custom Scheduling](#fuel-pacing-and-custom-scheduling)
+    - ["Symmetric" Coroutines and `coroutine.yieldto`](#symmetric-coroutines-and-coroutineyieldto)
+  - [The "Big Lie" & PUC-Rio C API vs Stackless Rust](#the-big-lie--puc-rio-c-api-vs-stackless-rust)
+  - [Rust Coroutines, Lua Coroutines, and Snarfing](#rust-coroutines-lua-coroutines-and-snarfing)
+  - [Zooming Out: Sandboxing & Systems Programming](#zooming-out-sandboxing--systems-programming)
 
-### Variables & Block-Scoped Constants
-- Global variables: Created by default unless declared `local`.
-  ```lua
-  globalVar = 100
-  ```
-- Local variables: Declared with `local`.
-  ```lua
-  local count = 1
-  ```
-- Local constants (Lua 5.4 feature): Declared with `<const>` attribute.
-  ```lua
-  local MAX_RETRY <const> = 5
-  -- MAX_RETRY = 10 -- Throws compile error: attempt to assign to const variable
-  ```
+---
 
-### Control Flow
+## 1. Lua 5.4 Basics
+
+### Primitives & Value Types
+Lua 5.4 features eight fundamental types:
+- **`nil`**: Represents absence of value (`null`/`undefined` in JS).
+- **`boolean`**: `true` or `false`.
+- **`number`**: 64-bit signed integers (`integer`) and 64-bit IEEE-754 floats (`float`).
+- **`string`**: Immutable byte sequences or UTF-8 text.
+- **`table`**: Associative arrays (used for objects, arrays, maps, and namespaces).
+- **`function`**: First-class closures.
+- **`thread`**: Coroutines for cooperative execution.
+- **`userdata`**: Host-managed structures.
+
+### Variables & Lua 5.4 `<const>`
 ```lua
--- Conditional Statements
-if x > 10 then
-  print("greater")
-elseif x == 10 then
-  print("equal")
-else
-  print("lesser")
-end
+-- Global Variable
+globalVar = 42
 
--- Numeric For Loop
-for i = 1, 5, 1 do
-  print(i)
-end
+-- Local Variable
+local localVar = "hello"
 
--- Generic For Loop (Pairs & Ipairs)
-for key, val in pairs({ a = 1, b = 2 }) do
-  print(key, val)
-end
+-- Block-Scoped Constant (Lua 5.4)
+local MAX_LIMIT <const> = 100
+-- MAX_LIMIT = 200 -- Throws compile error: attempt to assign to const variable
 ```
 
 ---
 
-## 2. Metatables & Object-Oriented Programming
+## 2. Metatables & Metamethods
 
-Metatables allow customizing Lua table behavior using metamethods:
-- `__index`: Invoked when querying a non-existent key.
-- `__newindex`: Invoked when assigning to a non-existent key (useful for read-only tables or proxy tables).
-- `__add`, `__sub`, `__tostring`, `__gc`: Operator overloading and object lifecycle customization.
+Metatables customize table behavior:
+- `__index`: Fallback table or function when reading missing keys.
+- `__newindex`: Intercepts assignments to missing keys (used for read-only tables / global constants).
+- `__add`, `__sub`, `__concat`, `__tostring`: Operator overloading.
 
 ---
 
-## 3. What is in the Lua Standard Library?
+## 3. Standard Library Overview
 
-Lua 5.4 includes core standard libraries:
-
-| Library | Modules & Functions |
+| Module | Core Functions |
 |---|---|
-| **Base** | `print`, `type`, `assert`, `error`, `pcall`, `xpcall`, `select`, `tonumber`, `tostring`, `pairs`, `ipairs`, `rawget`, `rawset`, `setmetatable`, `getmetatable` |
-| **Math** | `math.abs`, `math.floor`, `math.ceil`, `math.max`, `math.min`, `math.sqrt`, `math.random`, `math.type` (`"integer"` vs `"float"`) |
-| **String** | `string.upper`, `string.lower`, `string.sub`, `string.format`, `string.match`, `string.gsub`, `string.len` |
+| **Base** | `print`, `type`, `assert`, `error`, `pcall`, `xpcall`, `pairs`, `ipairs`, `rawget`, `rawset`, `setmetatable`, `getmetatable` |
+| **Math** | `math.abs`, `math.floor`, `math.ceil`, `math.max`, `math.min`, `math.sqrt`, `math.type` |
+| **String** | `string.upper`, `string.lower`, `string.sub`, `string.format`, `string.match`, `string.gsub` |
 | **Table** | `table.insert`, `table.remove`, `table.sort`, `table.concat`, `table.pack`, `table.unpack` |
-| **Coroutine** | `coroutine.create`, `coroutine.resume`, `coroutine.yield`, `coroutine.status`, `coroutine.running` |
+| **Coroutine** | `coroutine.create`, `coroutine.resume`, `coroutine.yield`, `coroutine.status`, `coroutine.yieldto` |
 
 ---
 
-## 4. What Does Ottavino Provide?
+## 4. The Architecture of Piccolo / Ottavino
 
-**Ottavino** is a pure-Rust VM implementation of Lua 5.4:
+### A "Stackless" Interpreter Design
 
-1. **Pure Rust Execution**: Eliminates C dependencies, memory unsafe C pointers, and native compilation toolchain requirements on client machines.
-2. **Garbage Collection (GC Arena)**: Provides fine-grained GC tracking and metrics through `ottavino-gc-arena` integrated with NAPI.
-3. **Sandboxing Control**: Allows selective loading of standard libraries (`Lua.empty()`, `Lua.core()`, `Lua.full()`, `loadCore()`, `loadIo()`) to restrict VM access in safe sandboxed environments.
-4. **Seamless NAPI Interop**: Converts JS primitives, plain `Object`s, and `Array`s bi-directionally to Lua primitive values and tables.
+Traditional language VM interpreters (such as standard PUC-Rio Lua in C) rely on the host C call stack for execution state. In contrast, **Piccolo** (and Ottavino) uses a **stackless** (trampoline) interpreter design.
+
+The execution state of a running Lua thread is reified into an `Executor` object that does not rely on the Rust function call stack. Execution progress is driven by polling:
+
+```rust
+loop {
+    if executor.step(ctx, &mut fuel) {
+        break; // Execution completed
+    }
+    // Execution suspended; control returned safely to host
+}
+```
+
+This design guarantees that execution can be suspended at any instruction boundary, allowing `gc-arena` garbage collection to take place without un-tracked references on the host stack.
+
+---
+
+### Benefits of Stackless
+
+#### Cancellation
+Because execution is driven by explicit polling steps, cancelling an untrusted script is trivial: stop calling `.step()` and drop the executor. Memory and GC resources are freed safely without risking incomplete stack unwinding.
+
+#### Pre-emptive Concurrency
+While standard Lua coroutines only offer *cooperative* multitasking, Piccolo's stackless executor allows *pre-emptive* concurrency. By stepping multiple `Executor` tasklets in round-robin fashion, multiple independent Lua scripts can run concurrently over shared global state without blocking each other.
+
+#### Fuel, Pacing, and Custom Scheduling
+Each execution step consumes a unit of execution budget called **`Fuel`**.
+- Scripts are bounded by their allocated fuel per slice.
+- Badly written or infinite loops (`while true do end`) cannot freeze host applications or the JavaScript event loop.
+- Host callbacks can interrupt fuel flow to yield control instantly to event loops (e.g., UI rendering or server event handling).
+
+#### "Symmetric" Coroutines and `coroutine.yieldto`
+Standard Lua features *asymmetric* coroutines (`coroutine.resume` / `coroutine.yield`), which can only yield back to their immediate caller. Achieving mutual yields between coroutines without accumulating stack frames requires complex outer runner wrappers in traditional Lua.
+
+Piccolo natively supports **symmetric coroutines** via `coroutine.yieldto(target_thread)`:
+```lua
+-- Directly yield control to another thread without stack leakage (tail yield)
+coroutine.yieldto(targetCoroutine)
+```
+
+---
+
+### The "Big Lie" & PUC-Rio C API vs Stackless Rust
+
+Standard PUC-Rio Lua C API can achieve basic instruction interrupts via `lua_sethook` and `lua_yield`. However, **the "Big Lie"** is that traditional C Lua breaks when a yield occurs inside nested C callbacks (a "Lua $\rightarrow$ C $\rightarrow$ Lua" sandwich).
+
+In traditional C Lua, resolving yields inside callbacks requires rewriting C code using `lua_callk` / `lua_pcallk` and continuation functions. Because writing C continuations manually is extraordinarily difficult, standard C stdlib functions (like `table.sort` with a custom comparator) cannot safely yield.
+
+Piccolo solves this natively in safe Rust by structuring all VM frames and callbacks as polling state machines (`Sequence`), making nested callbacks fully suspendable without C-style `longjmp` fragility.
+
+---
+
+### Rust Coroutines, Lua Coroutines, and Snarfing
+
+**Snarfing** is a programming language concept where an embedded language automatically inherits ("snarfs") features from its host implementation language.
+- Standard Lua snarfs host C memory allocation and locale handling.
+- Piccolo uses `gc-arena` for garbage collection and aligns sequence polling with Rust's `Future` / `Coroutine` state machine model.
+
+---
+
+### Zooming Out: Sandboxing & Systems Programming
+
+Piccolo and Ottavino bring true safe sandboxing to embedded scripting:
+- **No unsafe C memory management**: Eliminates buffer overflows or memory safety exploits from untrusted Lua code.
+- **Multi-tenant VM isolation**: You can instantiate as many isolated `Lua` instances as needed.
+- **Unobtrusive Embedded Scripting**: Offers total control over fuel, scheduling, standard library sandboxing (`Lua.empty()`, `Lua.core()`, `Lua.full()`), and memory usage.

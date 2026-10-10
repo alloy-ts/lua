@@ -1,10 +1,26 @@
 # API Reference for `@alloy-ts/lua`
 
-The module `dist/index.js` (and `src/main.ts`) exports the main `Lua` class and supporting interface `GcMetrics`.
+The `@alloy-ts/lua` library embeds a pure-Rust Lua 5.4 VM (**Ottavino**, based on **Piccolo**) into JavaScript and Node.js via NAPI-RS.
 
-## Exported Classes & Interfaces
+---
+
+## Table of Contents
+
+- [Overview](#overview)
+- [Constructors & Factories](#constructors--factories)
+- [Code Execution](#code-execution)
+- [Global Variable Binding](#global-variable-binding)
+- [Standard Library Management](#standard-library-management)
+- [Memory & Garbage Collection](#memory--garbage-collection)
+- [Underlying Architecture (Piccolo / Ottavino)](#underlying-architecture-piccolo--ottavino)
+
+---
+
+## Overview
 
 ```typescript
+import { Lua, GcMetrics } from "@alloy-ts/lua";
+
 export declare class Lua {
   constructor();
   static empty(): Lua;
@@ -31,63 +47,88 @@ export interface GcMetrics {
 
 ---
 
-## Detailed Method Reference
+## Constructors & Factories
 
-### Constructors & Static Factories
+### `new Lua()` / `Lua.full()`
+- **Signature:** `new Lua(): Lua` | `Lua.full(): Lua`
+- **Description:** Instantiates a new Lua 5.4 VM with the full standard library loaded (base, coroutine, math, string, table, and I/O).
 
-- **`new Lua()` / `Lua.full()`**
-  Creates a new Lua VM instance with the full standard library loaded (base, coroutine, math, string, table, I/O).
+### `Lua.core()`
+- **Signature:** `Lua.core(): Lua`
+- **Description:** Instantiates a Lua VM with the core standard library loaded (base, coroutine, math, string, table), excluding I/O.
 
-- **`Lua.core()`**
-  Creates a Lua VM instance with core standard libraries loaded (base, coroutine, math, string, table) excluding I/O.
-
-- **`Lua.empty()`**
-  Creates a completely empty sandboxed Lua VM instance with no standard libraries loaded.
-
----
-
-### Code Execution & Environment Binding
-
-- **`lua.eval(code: string): unknown`**
-  Compiles and executes the provided Lua code string.
-  Returns the evaluated Lua value converted into its JS equivalent:
-  - Primitives: `nil` $\rightarrow$ `undefined`, `boolean` $\rightarrow$ `boolean`, `integer`/`float` $\rightarrow$ `number`, `string` $\rightarrow$ `string`.
-  - Tables: Sequential 1-indexed tables $\rightarrow$ `Array`, Keyed tables $\rightarrow$ `Object`.
-  - Special values: Functions, threads, userdata $\rightarrow$ placeholder string identifiers.
-
-- **`lua.setGlobal(name: string, value: unknown): void`**
-  Sets a global variable in the Lua VM environment. Converts JS values to Lua equivalents:
-  - JS `undefined`/`null` $\rightarrow$ Lua `nil`.
-  - JS `boolean` $\rightarrow$ Lua `boolean`.
-  - JS `number` (integer) $\rightarrow$ Lua `integer`, float $\rightarrow$ Lua `number`.
-  - JS `string` $\rightarrow$ Lua `string`.
-  - JS `Array` $\rightarrow$ 1-indexed sequential Lua table.
-  - JS plain `Object` $\rightarrow$ Keyed Lua table.
-
-- **`lua.getGlobal(name: string): unknown`**
-  Retrieves a global variable from the Lua VM environment by name and converts it to a JS value.
+### `Lua.empty()`
+- **Signature:** `Lua.empty(): Lua`
+- **Description:** Instantiates a completely empty, sandboxed Lua VM with no standard libraries loaded.
 
 ---
 
-### Incremental Standard Library Loading
+## Code Execution
 
-- **`lua.loadCore(): void`**
-  Loads core standard libraries into an existing Lua state.
-
-- **`lua.loadIo(): void`**
-  Loads I/O standard libraries into an existing Lua state.
+### `lua.eval(code: string): unknown`
+- **Signature:** `lua.eval(code: string): unknown`
+- **Description:** Compiles and evaluates the given Lua code string synchronously, returning the evaluated result converted into JavaScript types.
+- **Type Conversions (Lua $\rightarrow$ JS):**
+  - `nil` $\rightarrow$ `undefined`
+  - `boolean` $\rightarrow$ `boolean`
+  - `integer` / `float` $\rightarrow$ `number`
+  - `string` $\rightarrow$ `string`
+  - `table` (sequential 1-indexed) $\rightarrow$ `Array`
+  - `table` (keyed) $\rightarrow$ `Object`
+  - `function`, `thread`, `userdata` $\rightarrow$ Placeholder string (`"[lua function]"`, etc.)
 
 ---
 
-### Memory & Garbage Collection Controls
+## Global Variable Binding
 
-- **`lua.totalMemory(): number`**
-  Returns the total memory currently used by the Lua VM context in bytes.
+### `lua.setGlobal(name: string, value: unknown): void`
+- **Signature:** `lua.setGlobal(name: string, value: unknown): void`
+- **Description:** Binds a global variable in the Lua VM environment. Converts JS values to Lua equivalents:
+  - `undefined` / `null` $\rightarrow$ `nil`
+  - `boolean` $\rightarrow$ `boolean`
+  - `number` (integer-valued) $\rightarrow$ `integer`, float $\rightarrow$ `number`
+  - `string` $\rightarrow$ `string`
+  - `Array` $\rightarrow$ 1-indexed sequential table
+  - Plain `Object` $\rightarrow$ Keyed table
 
-- **`lua.gcCollect(): void`**
-  Triggers a full garbage collection cycle inside the Lua VM.
+### `lua.getGlobal(name: string): unknown`
+- **Signature:** `lua.getGlobal(name: string): unknown`
+- **Description:** Retrieves a global variable by name from the Lua environment and converts it to a JavaScript value.
 
-- **`lua.gcMetrics(): GcMetrics`**
-  Returns a snapshot of the garbage collector metrics:
-  - `totalAllocation`: Total bytes tracked by the VM allocator.
-  - `allocationDebt`: Current allocation debt.
+---
+
+## Standard Library Management
+
+### `lua.loadCore(): void`
+- **Signature:** `lua.loadCore(): void`
+- **Description:** Loads core standard libraries (base, coroutine, math, string, table) into an existing Lua state.
+
+### `lua.loadIo(): void`
+- **Signature:** `lua.loadIo(): void`
+- **Description:** Loads the I/O standard library into an existing Lua state.
+
+---
+
+## Memory & Garbage Collection
+
+### `lua.totalMemory(): number`
+- **Signature:** `lua.totalMemory(): number`
+- **Description:** Returns total memory consumed by the Lua VM in bytes.
+
+### `lua.gcCollect(): void`
+- **Signature:** `lua.gcCollect(): void`
+- **Description:** Triggers a full garbage collection cycle in the Lua VM.
+
+### `lua.gcMetrics(): GcMetrics`
+- **Signature:** `lua.gcMetrics(): GcMetrics`
+- **Description:** Returns garbage collection metrics object with `totalAllocation` and `allocationDebt`.
+
+---
+
+## Underlying Architecture (Piccolo / Ottavino)
+
+Ottavino is built on **Piccolo** and `gc-arena`:
+1. **Stackless Interpreter**: Reifies VM execution state outside the host call stack, enabling bounded step polling, cancellation, and safe execution.
+2. **Fuel-Bounded Steps**: VM execution runs step-by-step with fuel bounds to guarantee bounded time slices and prevent infinite loops from locking up host threads.
+3. **Pre-emptive Concurrency**: Multiplexes multiple tasklets safely over shared VM state.
+4. **Symmetric Coroutines (`coroutine.yieldto`)**: Direct mutual yielding between coroutines without call stack accumulation (tail yields).
