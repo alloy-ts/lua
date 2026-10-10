@@ -101,7 +101,20 @@ Coroutines enable cooperative multitasking and yielding generators:
 
 ---
 
-## 3. What Ottavino Adds & Custom Extensions
+## 3. Ottavino Core Types & Architecture
+
+Ottavino's internal design revolves around six core types:
+
+1. **`Value<'gc>`**: The core sum type representing every Lua variable (`Nil`, `Boolean`, `Integer`, `Number`, `String`, `Table`, `Function`, `Thread`, `UserData`).
+2. **`Executor<'gc>`**: The virtual machine execution driver that steps through bytecode. It maintains VM execution modes (`ExecutorMode`) and supports fuel-based stepping (`step(ctx, fuel)`).
+3. **`Thread<'gc>`**: A garbage-collected Lua thread/coroutine maintaining its own call stack and execution status.
+4. **`Callback<'gc>`**: A host function implemented in Rust or exposed via NAPI. Callbacks return `CallbackReturn` instructions (such as `Return`, `Call`, `Yield`, `Resume`, or `Sequence`) to control execution flow.
+5. **`Stack<'gc, '_>`**: A zero-allocation view over function call arguments and return values passed directly into callbacks and sequences.
+6. **`Closure<'gc>`**: A compiled bytecode prototype (`FunctionPrototype`) bound to upvalues (such as the `_ENV` environment table or closed-over variables).
+
+---
+
+## 4. What Ottavino Adds & Custom Extensions
 
 In addition to standard Lua 5.4 features, Ottavino provides specific enhancements:
 
