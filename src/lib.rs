@@ -1,49 +1,52 @@
-pub mod any;
-pub mod async_callback;
-pub mod callback;
-pub mod closure;
-pub mod compiler;
-pub mod constant;
-pub mod conversion;
-pub mod error;
-pub mod finalizers;
-pub mod fuel;
-pub mod function;
-pub mod io;
-pub mod lua;
-pub mod meta_ops;
-pub mod opcode;
-pub mod registry;
-pub mod stack;
-pub mod stash;
-pub mod stdlib;
-pub mod string;
-pub mod table;
-pub mod thread;
-pub mod types;
-pub mod userdata;
-pub mod value;
+use napi::bindgen_prelude::*;
+use napi_derive::napi;
+use ottavino::{Closure, Executor, Function, Lua as OLua, Value as OValue};
 
-pub use self::{
-    async_callback::{async_sequence, SequenceReturn},
-    callback::{BoxSequence, Callback, CallbackFn, CallbackReturn, Sequence, SequencePoll},
-    closure::{Closure, CompilerError, FunctionPrototype},
-    constant::Constant,
-    conversion::{FromMultiValue, FromValue, IntoMultiValue, IntoValue, Variadic},
-    error::{Error, ExternError, RuntimeError, TypeError},
-    fuel::Fuel,
-    function::Function,
-    lua::{Context, Lua},
-    meta_ops::MetaMethod,
-    registry::{Registry, Singleton},
-    stack::Stack,
-    stash::{
-        StashedCallback, StashedClosure, StashedError, StashedExecutor, StashedFunction,
-        StashedString, StashedTable, StashedThread, StashedUserData, StashedValue,
-    },
-    string::String,
-    table::Table,
-    thread::{Execution, Executor, ExecutorMode, Thread, ThreadMode},
-    userdata::UserData,
-    value::Value,
-};
+#[napi]
+pub struct Lua {
+    inner: OLua,
+}
+
+#[napi]
+impl Lua {
+    #[napi(constructor)]
+    pub fn new() -> Self {
+        Lua {
+            inner: OLua::full(),
+        }
+    }
+
+    #[napi]
+    pub fn eval(&mut self, code: String) -> Result<String> {
+        let exec = self
+            .inner
+            .enter(|ctx| {
+                let closure = Closure::load(ctx, Some("eval"), code.as_bytes())
+                    .map_err(|e| napi::Error::from_reason(e.to_string()))?;
+                let func = Function::Closure(closure);
+                let executor = Executor::start(ctx, func, ());
+                Ok::<_, napi::Error>(ctx.stash(executor))
+            })?;
+
+        self.inner
+            .finish(&exec)
+            .map_err(|e| napi::Error::from_reason(e.to_string()))?;
+
+        self.inner.enter(|ctx| {
+            let res = ctx
+                .fetch(&exec)
+                .take_result::<OValue>(ctx)
+                .map_err(|e| napi::Error::from_reason(e.to_string()))?
+                .map_err(|e| napi::Error::from_reason(e.to_string()))?;
+
+            match res {
+                OValue::Nil => Ok("nil".to_string()),
+                OValue::Boolean(b) => Ok(b.to_string()),
+                OValue::Integer(i) => Ok(i.to_string()),
+                OValue::Number(n) => Ok(n.to_string()),
+                OValue::String(s) => Ok(String::from_utf8_lossy(s.as_bytes()).to_string()),
+                _ => Ok(format!("{:?}", res)),
+            }
+        })
+    }
+}
