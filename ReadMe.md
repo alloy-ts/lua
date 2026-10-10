@@ -22,6 +22,7 @@ console.log(message); // "Hello from Lua!"
 ## Documentation & Examples
 
 - **[API Reference Documentation](docs/api.md)**: Detailed specification of all exported classes, methods, and interfaces.
+- **[Lua Language & Stdlib Guide](docs/lang-guide.md)**: Overview of Lua 5.4 syntax, standard libraries, and Ottavino VM features.
 - **[Examples](examples/)**:
   - [`examples/variables.ts`](examples/variables.ts): Defining variables, primitives, read-only constants, and objects/tables.
   - [`examples/function.ts`](examples/function.ts): Defining functions, higher-order functions, and stateful closures.
