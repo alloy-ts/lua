@@ -197,29 +197,41 @@ fn ottavino_value_to_js<'js, 'gc>(
         ottavino::Value::Table(t) => {
             let len = t.length();
             if len > 0 {
-                let mut js_arr = env.create_array(len as u32)?;
-                for i in 1..=len {
-                    let elem = t.get_value(ctx, i);
-                    let js_elem = ottavino_value_to_js(env, ctx, elem)?;
-                    js_arr.set_element((i - 1) as u32, js_elem)?;
-                }
-                js_arr.into_unknown(env)
-            } else {
-                let mut js_obj = Object::new(env)?;
-                for (k, v) in t.iter() {
-                    let k_str = match k {
-                        ottavino::Value::String(s) => {
-                            String::from_utf8_lossy(s.as_bytes()).to_string()
+                let mut is_pure_array = true;
+                let mut count = 0;
+                for (k, _) in t.iter() {
+                    count += 1;
+                    match k {
+                        ottavino::Value::Integer(i) if i >= 1 && i <= len => {}
+                        _ => {
+                            is_pure_array = false;
+                            break;
                         }
-                        ottavino::Value::Integer(i) => i.to_string(),
-                        ottavino::Value::Number(n) => n.to_string(),
-                        _ => continue,
-                    };
-                    let js_val = ottavino_value_to_js(env, ctx, v)?;
-                    js_obj.set_named_property(&k_str, js_val)?;
+                    }
                 }
-                js_obj.into_unknown(env)
+                if is_pure_array && count as i64 == len {
+                    let mut js_arr = env.create_array(len as u32)?;
+                    for i in 1..=len {
+                        let elem = t.get_value(ctx, i);
+                        let js_elem = ottavino_value_to_js(env, ctx, elem)?;
+                        js_arr.set_element((i - 1) as u32, js_elem)?;
+                    }
+                    return js_arr.into_unknown(env);
+                }
             }
+
+            let mut js_obj = Object::new(env)?;
+            for (k, v) in t.iter() {
+                let k_str = match k {
+                    ottavino::Value::String(s) => String::from_utf8_lossy(s.as_bytes()).to_string(),
+                    ottavino::Value::Integer(i) => i.to_string(),
+                    ottavino::Value::Number(n) => n.to_string(),
+                    _ => continue,
+                };
+                let js_val = ottavino_value_to_js(env, ctx, v)?;
+                js_obj.set_named_property(&k_str, js_val)?;
+            }
+            js_obj.into_unknown(env)
         }
         ottavino::Value::Function(_) => env.create_string("[lua function]")?.into_unknown(env),
         ottavino::Value::Thread(_) => env.create_string("[lua thread]")?.into_unknown(env),
