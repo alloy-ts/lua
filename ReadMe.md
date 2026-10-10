@@ -74,6 +74,7 @@ We provide runnable TypeScript examples demonstrating various features with `oxc
 - `examples/variables.ts` — Comprehensive guide merging primitives, constants, variables, and nested objects.
 - `examples/memory.ts` — Memory allocation tracking and GC controls (`totalMemory()`, `gcCollect()`, `gcMetrics()`).
 - `examples/stdlib.ts` — Sandboxing with standard libraries (`Lua.empty()`, `Lua.core()`, `Lua.full()`, `loadCore()`, `loadIo()`).
+- `examples/error.ts` — Exception and error handling between Lua and JS/TS (`try/catch` and Lua `pcall`).
 
 Run examples using `node --import @oxc-node/core`:
 
@@ -83,6 +84,7 @@ node --import @oxc-node/core examples/object.ts
 node --import @oxc-node/core examples/variables.ts
 node --import @oxc-node/core examples/memory.ts
 node --import @oxc-node/core examples/stdlib.ts
+node --import @oxc-node/core examples/error.ts
 ```
 
 ## API Reference
