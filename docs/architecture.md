@@ -36,6 +36,21 @@ The NAPI bindings in `src/lua.rs` expose high-level wrappers for Node.js / TypeS
 
 ---
 
+## Cross-Boundary Exception Handling & Error Translation
+
+In standard C-based Lua embeddings (PUC-Rio Lua or LuaJIT), errors crossing native language boundaries are handled using `setjmp`/`longjmp` or C++ exceptions. This can be unsafe when crossing foreign function interfaces (FFI).
+
+In Ottavino and our NAPI binding:
+
+1. **Compilation Errors**:
+   Parsing errors in `Closure::load()` yield Rust `Err(CompilerError)`. The NAPI wrapper converts this into `Err(NapiError::from_reason("Lua compile error: <msg>"))`, which NAPI translates into a JavaScript `Error` with `message: "Lua compile error: <msg>"`.
+2. **Runtime Errors**:
+   Runtime faults (such as invalid operand types, calling non-functions, or explicit `error()` calls) yield `Ok(Err(ottavino::Error))`. The NAPI wrapper converts this into `Err(NapiError::from_reason("Lua runtime error: <msg>"))`, throwing a JavaScript `Error` with `message: "Lua runtime error: <msg>"`.
+3. **Internal Protected Calls (`pcall`)**:
+   Errors intercepted inside Lua via `pcall` are handled entirely within the VM state, returning a boolean status without crossing the NAPI boundary.
+
+---
+
 ## The "Mutation XOR Collection" Constraint & Stackless VM
 
 `gc-arena` relies on a fundamental safety invariant known as **Mutation XOR Collection**:

@@ -2,7 +2,7 @@
 
 This document provides a comprehensive API reference for `@lib/module` (exported via `index.js` and `dist/index.js`), which embeds a pure Rust/NAPI Lua 5.4 execution environment into TypeScript and JavaScript applications powered by **Ottavino** (derived from **Piccolo** and **`gc-arena`**).
 
-For underlying architectural details (stackless VM design, `gc-arena`, symmetric coroutines), see [docs/architecture.md](architecture.md).
+For underlying architectural details (stackless VM design, `gc-arena`, symmetric coroutines, and cross-boundary error propagation), see [docs/architecture.md](architecture.md).
 For Lua 5.4 language basics and standard library modules, see [docs/lang-guide.md](lang-guide.md).
 
 ---
@@ -220,24 +220,39 @@ The NAPI binding automatically maps types between TypeScript/JavaScript and Lua:
 
 ---
 
-## Error Handling
+## Cross-Boundary Exception Conversion
 
-All Lua compilation and runtime errors are converted into JavaScript `Error` instances:
+Errors originating inside Lua execution cross the language boundary safely through NAPI:
 
-- **Compilation / Syntax Errors:**
-  Thrown when code supplied to `.eval()` fails Lua parsing.
-  Error message format: `Lua compile error: <details>`
+### 1. Exception Conversion Pipeline
 
-- **Runtime Execution Errors:**
-  Thrown when code execution fails at runtime (e.g., operating on `nil`, calling non-functions).
-  Error message format: `Lua runtime error: <details>`
+1. **Syntax / Compile Errors**:
+   When parsing fails during `Closure::load()`, Ottavino returns `Err(CompilerError)`.
+   The Rust wrapper converts this to `Err(NapiError::from_reason("Lua compile error: <details>"))`.
+   NAPI translates this into a native JavaScript `Error` with `message: "Lua compile error: <details>"`.
 
-### Example
+2. **Runtime Execution Errors**:
+   When Lua code calls `error(...)` or encounters a runtime fault (e.g. nil arithmetic), Ottavino's `Executor::finish()` yields `Ok(Err(ottavino::Error))`.
+   The Rust wrapper converts this to `Err(NapiError::from_reason("Lua runtime error: <details>"))`.
+   NAPI translates this into a native JavaScript `Error` with `message: "Lua runtime error: <details>"`.
+
+3. **In-Lua Error Interception (`pcall`)**:
+   Errors handled inside Lua via `pcall(function, args...)` are intercepted within the VM state before crossing the NAPI boundary, returning `{ ok: false, error: message }` to the caller without throwing a JavaScript exception.
+
+### 2. TypeScript / JavaScript Example
 
 ```typescript
+// Catching Lua compile errors
 try {
-  lua.eval("invalid + syntax +++");
+  lua.eval("function unclosed(");
 } catch (err) {
   console.error((err as Error).message); // "Lua compile error: parse error"
+}
+
+// Catching Lua runtime errors
+try {
+  lua.eval("error('Database Connection Timeout')");
+} catch (err) {
+  console.error((err as Error).message); // "Lua runtime error: lua error: Database Connection Timeout"
 }
 ```
