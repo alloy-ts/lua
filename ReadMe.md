@@ -71,6 +71,7 @@ lua.gcCollect();
 - **`lua.setGlobal(name: string, value: unknown): void`**: Sets a global variable in the Lua VM environment from JS primitives, objects, arrays, or functions.
 - **`lua.registerCallback(name: string, callback: Function): void`**: Binds a JS/TS function as a global Lua callback function callable from Lua.
 - **`lua.getGlobal(name: string): unknown`**: Retrieves a global variable from the Lua VM environment.
+- **`lua.globals(): Globals`**: Returns a `Globals` handle (`globals.get(name)` / `globals.set(name, value)`) aligned with Ottavino's Rust API.
 - **`lua.loadCore(): void`**: Loads core standard libraries into an existing Lua state.
 - **`lua.loadIo(): void`**: Loads I/O standard library definitions into an existing Lua state.
 - **`lua.totalMemory(): number`**: Returns total memory used by the Lua VM in bytes.

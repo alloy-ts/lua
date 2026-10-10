@@ -33,6 +33,11 @@ import { Lua, GcMetrics, __napiBindingTarget } from "@alloy-ts/lua";
 - **`lua.getGlobal(name: string): unknown`**
   Retrieves the value of a global variable from the Lua environment by `name` and converts it to a JS value.
 
+- **`lua.globals(): Globals`**
+  Returns a `Globals` handle for managing global variables (`_ENV` / `ctx.globals()`), mirroring Ottavino's Rust API.
+  - **`globals.get(name: string): unknown`**: Retrieves a global variable from the Lua environment.
+  - **`globals.set(name: string, value: unknown): void`**: Binds a global variable in the Lua environment. Accepts primitives, JS objects/arrays, and JS function callbacks.
+
 - **`lua.loadCore(): void`**
   Loads core standard libraries (`base`, `coroutine`, `math`, `string`, `table`) into an existing Lua state.
 

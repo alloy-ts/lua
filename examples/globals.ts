@@ -16,21 +16,21 @@ interface User {
 export function runGlobalsExample() {
   const lua = Lua.full();
 
-  console.log("=== 1. Primitive Globals (Variables & Constants) ===");
+  console.log("=== 1. Globals API: Setting Primitives & Functions ===");
 
-  // Set TS primitive values as Lua globals via NAPI
-  lua.setGlobal("SERVER_NAME", "Alpha Server");
-  lua.setGlobal("PORT", 8080);
-  lua.setGlobal("TIMEOUT_SEC", 30.5);
-  lua.setGlobal("IS_PRODUCTION", false);
+  // Set TS primitive values and JS callback functions as Lua globals via Globals API
+  lua.globals().set("SERVER_NAME", "Alpha Server");
+  lua.globals().set("PORT", 8080);
+  lua.globals().set("IS_PRODUCTION", false);
+  lua.globals().set("calculateLoad", (base: number, multiplier: number) => base * multiplier);
 
   // Evaluate in Lua
   const status = lua.eval(
-    "return SERVER_NAME .. ' running on port ' .. PORT .. ' (Prod: ' .. tostring(IS_PRODUCTION) .. ')'",
+    "return SERVER_NAME .. ' running on port ' .. PORT .. ' (Load: ' .. calculateLoad(10, 5) .. ')'",
   );
   console.log("Status from Lua:", status);
 
-  console.log("\n=== 2. Object Globals (TS/JS Objects & Arrays) ===");
+  console.log("\n=== 2. Globals API: Setting Objects & Arrays ===");
 
   const currentUser: User = {
     id: 101,
@@ -44,7 +44,7 @@ export function runGlobalsExample() {
   };
 
   // NAPI converts JS objects -> Lua keyed tables, JS arrays -> 1-indexed Lua sequential tables
-  lua.setGlobal("user", currentUser);
+  lua.globals().set("user", currentUser);
 
   // Read and mutate object fields in Lua
   lua.eval(`
@@ -53,8 +53,8 @@ export function runGlobalsExample() {
     user.config.maxConnections = user.config.maxConnections + 50
   `);
 
-  // Retrieve modified object back in TS
-  const updatedUser = lua.getGlobal("user") as User & { lastLogin?: string };
+  // Retrieve modified object back in TS via Globals API
+  const updatedUser = lua.globals().get("user") as User & { lastLogin?: string };
   console.log("Updated User Object from Lua:", updatedUser);
 
   console.log("\n=== 3. Global State round-trip ===");

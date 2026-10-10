@@ -48,6 +48,23 @@ test("globals set and get", () => {
   expect(lua.eval("return myStr .. ' rocks'")).toBe("embedded lua rocks");
 });
 
+test("globals() API handle", () => {
+  const lua = Lua.full();
+  const globals = lua.globals();
+
+  globals.set("score", 100);
+  expect(globals.get("score")).toBe(100);
+  expect(lua.eval("return score + 50")).toBe(150);
+
+  globals.set("add", (x: number, y: number) => x + y);
+  expect(lua.eval("return add(12, 34)")).toBe(46);
+
+  const coreLua = Lua.core();
+  expect(typeof coreLua.globals).toBe("function");
+  coreLua.globals().set("val", 99);
+  expect(coreLua.globals().get("val")).toBe(99);
+});
+
 test("memory and GC methods", () => {
   const lua = Lua.full();
 
