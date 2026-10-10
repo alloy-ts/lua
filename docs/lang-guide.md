@@ -2,6 +2,9 @@
 
 This guide provides an introduction to Lua 5.4 syntax, standard library modules, and how the underlying **Ottavino** pure-Rust Lua VM exposes standard libraries to JavaScript and TypeScript applications.
 
+For deep architectural details (stackless VM design, `gc-arena`, fuel pacing), see [docs/architecture.md](architecture.md).
+For TypeScript API methods and types, see [docs/api.md](api.md).
+
 ---
 
 ## Overview
@@ -183,6 +186,7 @@ Cooperative multitasking utilities:
 - `coroutine.create(f)`: Creates a new coroutine thread.
 - `coroutine.resume(co [, val1, ...])`: Resumes/starts a suspended coroutine.
 - `coroutine.yield(...)`: Yields execution back to caller.
+- `coroutine.yieldto(targetThread)`: **Symmetric Coroutine Transfer** (unique to Ottavino/Piccolo stackless architecture). Directly transfers execution to `targetThread` without stack accumulation or tail-call leaks.
 - `coroutine.status(co)`: Returns `"suspended"`, `"running"`, or `"dead"`.
 
 #### 6. I/O Library (`loadIo()`)
@@ -193,11 +197,15 @@ Cooperative multitasking utilities:
 
 ## What Ottavino Adds
 
-Ottavino provides a pure-Rust VM implementation of Lua 5.4. It adds:
+Ottavino provides a pure-Rust VM implementation of Lua 5.4 based on Piccolo. It adds:
 
-1. **Memory & Allocator Inspection**:
+1. **Stackless Architecture**:
+   - Reified call stack and trampoline model enabling bounded instruction stepping and non-blocking scheduling.
+2. **Symmetric Coroutine Transfer (`coroutine.yieldto`)**:
+   - Enables direct mutual yield between coroutines without tail-call leaks or C-stack limitations.
+3. **Memory & Allocator Inspection**:
    - Directly exposes allocator statistics (`lua.totalMemory()`, `lua.gcMetrics()`).
-2. **Explicit Garbage Collector Triggers**:
+4. **Explicit Garbage Collector Triggers**:
    - Allows Node.js applications to manually invoke `lua.gcCollect()`.
-3. **Fine-Grained Sandboxing**:
+5. **Fine-Grained Sandboxing**:
    - Enables fine-grained standard library selection (`Lua.empty()`, `Lua.core()`, `Lua.full()`) and dynamic loading (`loadCore()`, `loadIo()`).

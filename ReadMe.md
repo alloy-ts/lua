@@ -1,15 +1,29 @@
 # Lua
 
-> Embed a Lua execution environment into TypeScript and JavaScript applications using Lua's C/Rust VM API via NAPI.
+> Embed a Lua execution environment into TypeScript and JavaScript applications using Lua's API via NAPI and pure-Rust VM (Ottavino / Piccolo).
 
-This library uses [NAPI-RS](https://napi.rs/) and [Ottavino](https://github.com/kyren/ottavino) (a pure Rust Lua 5.4 VM implementation) to safely expose Lua's API to Node.js and JavaScript environments without external native C dependencies.
+This library uses [NAPI-RS](https://napi.rs/) and [Ottavino](https://github.com/kyren/ottavino) (a pure Rust Lua 5.4 VM implementation derived from Piccolo and `gc-arena`) to safely expose Lua's API to Node.js and JavaScript environments without external native C dependencies or memory corruption risks.
 
 ## Features
 
 - **Full Lua Environment**: Create sandboxed Lua states with empty, core, or full standard libraries.
 - **Eval Lua Code**: Run arbitrary Lua scripts and return JavaScript primitives, objects, and arrays.
 - **Global Variable Binding**: Get and set global variables in the Lua VM directly from JS/TS.
-- **GC & Memory Controls**: Monitor memory consumption (`totalMemory()`) and manually trigger garbage collection (`gcCollect()`).
+- **Stackless & Resilient Architecture**: Powered by Ottavino's stackless interpreter design for safe sandboxing and polling.
+- **GC & Memory Controls**: Monitor memory consumption (`totalMemory()`), allocator debt (`gcMetrics()`), and manually trigger garbage collection (`gcCollect()`).
+
+## Architecture & Design Highlights
+
+Unlike C-based Lua embeddings (PUC-Rio Lua or LuaJIT), this library is built on **Ottavino** (derived from **Piccolo**), a pure, mostly safe Rust implementation of Lua 5.4.
+
+Key architectural benefits include:
+
+- **Stackless Interpreter Design**: The VM state is reified as a data structure rather than relying on the native C/Rust function call stack. Execution progress is driven by polling and stepping fuel.
+- **Immediate Cancellation & Pacing**: Long-running or infinite loops in untrusted Lua code can be safely interrupted or bounded without destroying process state or longjmping past native stacks.
+- **True Garbage Collection (`gc-arena`)**: Uses `gc-arena` for precise tracing garbage collection without raw pointers or reference cycle leaks.
+- **Symmetric Coroutines (`coroutine.yieldto`)**: Supports direct symmetric coroutine transfers without stack accumulation or tail-call leaks.
+
+For deep architectural details, see [docs/architecture.md](docs/architecture.md).
 
 ## Usage Example
 
@@ -44,7 +58,13 @@ console.log(`Memory used: ${lua.totalMemory()} bytes`);
 lua.gcCollect();
 ```
 
-## API Reference
+## Documentation
+
+- [API Reference](docs/api.md) — Detailed TypeScript methods, types, and error handling.
+- [Language & Stdlib Guide](docs/lang-guide.md) — Lua 5.4 syntax, standard library modules, and sandboxing subsets.
+- [Architecture & Design Guide](docs/architecture.md) — In-depth overview of Piccolo/Ottavino's stackless VM design, `gc-arena`, fuel pacing, and coroutines.
+
+## API Reference Overview
 
 ### Constructors
 
@@ -61,7 +81,7 @@ lua.gcCollect();
 - `lua.loadIo(): void`: Loads I/O standard libraries into an existing Lua state.
 - `lua.totalMemory(): number`: Returns total memory used by the Lua VM in bytes.
 - `lua.gcCollect(): void`: Triggers a full garbage collection cycle in the Lua VM.
-- `lua.gcMetrics(): GcMetrics`: Returns garbage collector metrics.
+- `lua.gcMetrics(): GcMetrics`: Returns garbage collector metrics (`totalAllocation`, `allocationDebt`).
 
 ## Development
 

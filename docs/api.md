@@ -1,6 +1,9 @@
 # Lua API Reference
 
-This document provides a comprehensive API reference for `@lib/module` (exported via `index.js` and `dist/index.js`), which embeds a pure Rust/NAPI Lua 5.4 execution environment into TypeScript and JavaScript applications.
+This document provides a comprehensive API reference for `@lib/module` (exported via `index.js` and `dist/index.js`), which embeds a pure Rust/NAPI Lua 5.4 execution environment into TypeScript and JavaScript applications powered by **Ottavino** (derived from **Piccolo** and **`gc-arena`**).
+
+For underlying architectural details (stackless VM design, `gc-arena`, symmetric coroutines), see [docs/architecture.md](architecture.md).
+For Lua 5.4 language basics and standard library modules, see [docs/lang-guide.md](lang-guide.md).
 
 ---
 
