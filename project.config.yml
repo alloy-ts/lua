@@ -1,7 +1,7 @@
-name: python
+name: lua
 owner: alloy-ts
-description:
+description: Embed a Lua execution environment into TypeScript and JavaScript applications using NAPI.
 repositories:
-  - https://codeberg.org/alloy-ts/python
-  - https://gitlab.com/alloy-ts/python
-  - https://github.com/alloy-ts/python
+  - https://codeberg.org/alloy-ts/lua
+  - https://gitlab.com/alloy-ts/lua
+  - https://github.com/alloy-ts/lua

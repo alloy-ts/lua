@@ -9,12 +9,13 @@ This library uses [NAPI-RS](https://napi.rs/) and [Ottavino](https://github.com/
 To support embedded Lua in TypeScript/JavaScript via NAPI:
 
 1. **Native Binding Layer (NAPI-RS)**: Rust functions and classes are decorated with `#[napi]` attributes to generate native Node.js bindings (`.node` binary).
-2. **Lua Engine**: A Rust-implemented Lua 5.4 VM (`ottavino`) executes Lua bytecode sandboxed inside the process memory space.
+2. **Lua Engine**: A Rust-implemented Lua 5.4 VM (`ottavino`) executes Lua bytecode sandboxed inside the process memory space using a **stackless architecture**.
 3. **Type Conversion**: JS primitives (`number`, `string`, `boolean`, `null/undefined`) and structures (`object`, `array`) are mapped bidirectionally to Lua types (`integer`, `number`, `string`, `table`, `nil`).
 4. **Exported API**: The `Lua` class is exported via NAPI to TypeScript/JavaScript, providing methods to evaluate code, manage global variables, load standard libraries, and control garbage collection.
 
 ## Documentation
 
+- **[Stackless Architecture Guide](docs/stackless-architecture.md)**: Reified call stacks, cancellation, pre-emptive concurrency, fuel pacing, symmetric coroutines (`coroutine.yieldto`), and C-stack longjmp comparisons.
 - **[Language & Standard Library Guide](docs/lang-guide.md)**: Lua 5.4 basics, standard library overview (`math`, `string`, `table`, `coroutine`, `io`), WASI p3 sandboxing, and what the pure-Rust Ottavino engine provides.
 - **[API Reference](docs/api.md)**: Full API documentation for the exported `Lua` class, constructors, methods, GC metrics interface, and JS-to-Lua type mapping rules.
 

@@ -17,10 +17,10 @@ A guide covering Lua 5.4 language basics, the standard library, and the features
   - [Math Library (`math`)](#math-library-math)
   - [String Library (`string`)](#string-library-string)
   - [Table Library (`table`)](#table-library-table)
-  - [Coroutine Library (`coroutine`)](#coroutine-library-coroutine)
+  - [Coroutine Library (`coroutine`) & `coroutine.yieldto`](#coroutine-library-coroutine--coroutineyieldto)
   - [I/O Library (`io`)](#io-library-io)
 - [3. What Ottavino Adds & Provides](#3-what-ottavino-adds--provides)
-  - [Pure Rust Lua 5.4 Virtual Machine](#pure-rust-lua-54-virtual-machine)
+  - [Pure Rust Stackless Lua 5.4 Virtual Machine](#pure-rust-stackless-lua-54-virtual-machine)
   - [Granular Standard Library Sandboxing](#granular-standard-library-sandboxing)
   - [Memory Allocation Tracking & GC Arena Metrics](#memory-allocation-tracking--gc-arena-metrics)
   - [Zero-C-Dependency NAPI & WASM/WASI Readiness](#zero-c-dependency-napi--wasmwasi-readiness)
@@ -193,14 +193,15 @@ Provides algorithms for array-like tables:
 - Packing/Unpacking: `table.pack(...)`, `table.unpack(list, [i, [j]])`.
 - Slicing/Moving: `table.move(a1, f, e, t, [a2])`.
 
-### Coroutine Library (`coroutine`)
+### Coroutine Library (`coroutine`) & `coroutine.yieldto`
 
-Provides cooperative multitasking and stackful coroutines:
+Provides cooperative multitasking and stackful/symmetric coroutines:
 
 - `coroutine.create(f)`: Creates a new coroutine thread object.
 - `coroutine.resume(co, ...)`: Starts or resumes execution of a coroutine.
 - `coroutine.yield(...)`: Suspends coroutine execution and returns values to `resume()`.
 - `coroutine.status(co)`: Returns coroutine state (`"running"`, `"suspended"`, `"normal"`, or `"dead"`).
+- `coroutine.yieldto(thread)`: **Symmetric Coroutine Transfer**. Directly transfers control to `thread` without accumulating stack frames or leaking stack memory over long yield chains.
 - `coroutine.wrap(f)`: Returns a JS/Lua callable function that resumes the coroutine directly.
 - `coroutine.running()`: Returns the currently running coroutine thread.
 - `coroutine.close(co)`: Closes and terminates a suspended coroutine.
@@ -217,9 +218,10 @@ Provides input/output file handles:
 
 [Ottavino](https://github.com/kyren/ottavino) is a pure-Rust Lua 5.4 virtual machine implementation used by this NAPI library. Here is what `ottavino` specifically adds and provides:
 
-### Pure Rust Lua 5.4 Virtual Machine
+### Pure Rust Stackless Lua 5.4 Virtual Machine
 
-- **No Native C Dependencies**: Standard Lua wrappers link against C shared libraries (`liblua5.4.so` / `lua54.dll`). Ottavino implements the complete Lua 5.4 interpreter and bytecode executor in pure Rust.
+- **No Native C Dependencies**: Standard Lua wrappers link against C shared libraries (`liblua5.4.so` / `lua54.dll`). Ottavino implements the complete Lua 5.4 interpreter and bytecode executor in pure Rust using a **stackless architecture**.
+- **Cancellation & Pre-emptive Fuel Scheduling**: Untrusted scripts can be paused or cancelled at bounded instruction fuel boundaries without blocking host JS event loops.
 - **Memory Safety**: Memory management is handled inside Rust's safe memory abstractions using the `gc-arena` crate.
 
 ### Granular Standard Library Sandboxing
