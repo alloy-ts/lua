@@ -9,6 +9,14 @@
  */
 export declare const __napiBindingTarget: 'native' | 'wasm32-wasi' | 'wasm32-wasip1'
 
+/** Globals handle for interacting with global variables (`_ENV` / `ctx.globals()`). */
+export declare class Globals {
+  /** Binds a global variable in the Lua environment. */
+  set(lua: Lua, name: string, value: unknown): void
+  /** Retrieves a global variable from the Lua environment. */
+  get(lua: Lua, name: string): unknown
+}
+
 /** A Lua execution environment exposed via NAPI. */
 export declare class Lua {
   /** Create a `Lua` instance with the full stdlib loaded. */
@@ -17,6 +25,12 @@ export declare class Lua {
   static core(): Lua
   /** Create an empty `Lua` instance. */
   static empty(): Lua
+  /** Access the `Globals` handle mirroring Ottavino's `ctx.globals()` API. */
+  globals(): Globals
+  /** Set a global variable in the Lua environment (legacy forwarder to globals().set()). */
+  setGlobal(name: string, value: unknown): void
+  /** Get a global variable from the Lua environment (legacy forwarder to globals().get()). */
+  getGlobal(name: string): unknown
   /** Load the core parts of the stdlib (non-I/O). */
   loadCore(): void
   /** Load the I/O parts of the stdlib. */
@@ -27,10 +41,6 @@ export declare class Lua {
   gcCollect(): void
   /** Get garbage collector metrics. */
   gcMetrics(): GcMetrics
-  /** Set a global variable or constant in the Lua environment from a JS value (primitive or object). */
-  setGlobal(name: string, value: unknown): void
-  /** Get a global variable from the Lua environment converted to a JS primitive value. */
-  getGlobal(name: string): unknown
   /** Evaluate a Lua script/expression string and return the result value converted to JS. */
   eval(code: string): unknown
 }

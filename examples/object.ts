@@ -1,10 +1,11 @@
 import { Lua } from "../src/main.ts";
 
 /**
- * Example demonstrating how to define a Lua object/table from a TS/JS object using NAPI.
+ * Example demonstrating how to define a Lua object/table from a TS/JS object using lua.globals().
  */
 function runObjectDemo() {
   const lua = Lua.full();
+  const globals = lua.globals();
 
   console.log("=== Setting Lua global object/table from TS object ===");
 
@@ -19,8 +20,8 @@ function runObjectDemo() {
     },
   };
 
-  // Define global object in Lua
-  lua.setGlobal("config", config);
+  // Define global object in Lua via globals.set()
+  globals.set(lua, "config", config);
 
   // Access fields of the Lua object/table
   console.log("config.appName:", lua.eval("return config.appName"));

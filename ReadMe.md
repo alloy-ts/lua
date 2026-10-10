@@ -6,7 +6,7 @@ This module provides TypeScript/JavaScript bindings for embedding and executing 
 
 - **Full Lua Environment**: Run Lua scripts with standard library capabilities.
 - **High Performance**: Native Rust binding using NAPI-RS for minimal overhead.
-- **Seamless JS Interop**: Evaluate Lua expressions, set global variables (`setGlobal`), and retrieve global variables (`getGlobal`).
+- **Seamless JS Interop**: Evaluate Lua expressions, manage global variables via `lua.globals()`, and pass JS objects into Lua tables.
 - **Error Handling**: Lua syntax and runtime exceptions are caught across the NAPI boundary and thrown as JavaScript `Error` objects in JS try/catch blocks.
 - **Memory & GC Control**: Monitor VM memory usage (`totalMemory`) and trigger manual GC (`gcCollect`).
 - **API Documentation**: Complete API mapping and method reference in [docs/api.md](./docs/api.md).
@@ -35,18 +35,19 @@ const message = evalLua('return "Hello from " .. "Lua!"');
 console.log(message); // Output: Hello from Lua!
 ```
 
-### Using the `Lua` Class with `setGlobal` & `getGlobal`
+### Using the `Lua` Class & `Globals` API
 
 ```typescript
 import { Lua } from "./src/main.ts";
 
 const lua = Lua.full();
+const globals = lua.globals();
 
 // Set primitive globals
-lua.setGlobal("MAX_ITEMS", 100);
+globals.set(lua, "MAX_ITEMS", 100);
 
 // Set TS object as a Lua table
-lua.setGlobal("config", {
+globals.set(lua, "config", {
   port: 8080,
   host: "localhost",
 });
@@ -56,7 +57,7 @@ const result = lua.eval("return config.host .. ':' .. tostring(config.port)");
 console.log(result); // Output: localhost:8080
 
 // Retrieve global variables directly from JS
-console.log("MAX_ITEMS:", lua.getGlobal("MAX_ITEMS")); // Output: 100
+console.log("MAX_ITEMS:", globals.get(lua, "MAX_ITEMS")); // Output: 100
 ```
 
 ### Error Handling with JS try/catch
@@ -79,7 +80,7 @@ Check out executable TypeScript examples in the `examples/` directory:
 
 - `examples/primitives.ts` — Setting primitive variables and constants
 - `examples/object.ts` — Passing structured JS objects to Lua tables
-- `examples/globals.ts` — Comprehensive global variable management
+- `examples/globals.ts` — Comprehensive global variable management via `lua.globals()`
 - `examples/function.ts` — Defining and calling Lua functions
 - `examples/coroutines.ts` — Generator patterns with Lua coroutines
 - `examples/error.ts` — Error handling and JS try/catch integration

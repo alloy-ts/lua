@@ -153,6 +153,12 @@ pub struct Lua {
     inner: OLua,
 }
 
+/// Globals handle for interacting with global variables (`_ENV` / `ctx.globals()`).
+#[napi]
+pub struct Globals {
+    // Shared reference to parent Lua state is managed by passing &mut Lua to methods
+}
+
 #[napi]
 impl Lua {
     /// Create a `Lua` instance with the full stdlib loaded.
@@ -177,6 +183,26 @@ impl Lua {
         Lua {
             inner: OLua::empty(),
         }
+    }
+
+    /// Access the `Globals` handle mirroring Ottavino's `ctx.globals()` API.
+    #[napi]
+    pub fn globals(&mut self) -> Globals {
+        Globals {}
+    }
+
+    /// Set a global variable in the Lua environment (legacy forwarder to globals().set()).
+    #[napi(js_name = "setGlobal")]
+    pub fn set_global(&mut self, env: Env, name: String, value: Unknown) -> napi::Result<()> {
+        let mut globals = self.globals();
+        globals.set(env, self, name, value)
+    }
+
+    /// Get a global variable from the Lua environment (legacy forwarder to globals().get()).
+    #[napi(js_name = "getGlobal")]
+    pub fn get_global<'a>(&mut self, env: &'a Env, name: String) -> napi::Result<Unknown<'a>> {
+        let mut globals = self.globals();
+        globals.get(env, self, name)
     }
 
     /// Load the core parts of the stdlib (non-I/O).
@@ -211,55 +237,6 @@ impl Lua {
             total_allocation: m.total_allocation() as f64,
             allocation_debt: m.allocation_debt(),
         }
-    }
-
-    /// Set a global variable or constant in the Lua environment from a JS value (primitive or object).
-    #[napi(js_name = "setGlobal")]
-    pub fn set_global(&mut self, env: Env, name: String, value: Unknown) -> napi::Result<()> {
-        let mut set_err = None;
-
-        self.inner.enter(|ctx| {
-            let globals = ctx.globals();
-
-            let lua_val = match js_to_ottavino_val(&env, ctx, &value) {
-                Ok(v) => v,
-                Err(e) => {
-                    set_err = Some(e);
-                    return;
-                }
-            };
-
-            let name_key = ctx.intern(name.as_bytes()).into_value(ctx);
-            let _ = globals.set(ctx, name_key, lua_val);
-        });
-
-        if let Some(err) = set_err {
-            return Err(err);
-        }
-
-        Ok(())
-    }
-
-    /// Get a global variable from the Lua environment converted to a JS primitive value.
-    #[napi(js_name = "getGlobal")]
-    pub fn get_global<'a>(&mut self, env: &'a Env, name: String) -> napi::Result<Unknown<'a>> {
-        let mut res_js_val = JsVal::Nil;
-
-        self.inner.enter(|ctx| {
-            let key = ctx.intern(name.as_bytes());
-            let val = ctx.globals().get_value(ctx, key);
-
-            res_js_val = match val {
-                OValue::Nil => JsVal::Nil,
-                OValue::Boolean(b) => JsVal::Boolean(b),
-                OValue::Integer(i) => JsVal::Integer(i),
-                OValue::Number(f) => JsVal::Number(f),
-                OValue::String(s) => JsVal::String(s.as_bytes().to_vec()),
-                _ => JsVal::Nil,
-            };
-        });
-
-        js_val_to_unknown(env, res_js_val)
     }
 
     /// Evaluate a Lua script/expression string and return the result value converted to JS.
@@ -309,6 +286,58 @@ impl Lua {
             };
             Ok(())
         }).map_err(to_napi_err)?;
+
+        js_val_to_unknown(env, res_js_val)
+    }
+}
+
+#[napi]
+impl Globals {
+    /// Binds a global variable in the Lua environment.
+    #[napi]
+    pub fn set(&mut self, env: Env, lua: &mut Lua, name: String, value: Unknown) -> napi::Result<()> {
+        let mut set_err = None;
+
+        lua.inner.enter(|ctx| {
+            let globals = ctx.globals();
+
+            let lua_val = match js_to_ottavino_val(&env, ctx, &value) {
+                Ok(v) => v,
+                Err(e) => {
+                    set_err = Some(e);
+                    return;
+                }
+            };
+
+            let name_key = ctx.intern(name.as_bytes()).into_value(ctx);
+            let _ = globals.set(ctx, name_key, lua_val);
+        });
+
+        if let Some(err) = set_err {
+            return Err(err);
+        }
+
+        Ok(())
+    }
+
+    /// Retrieves a global variable from the Lua environment.
+    #[napi]
+    pub fn get<'a>(&mut self, env: &'a Env, lua: &mut Lua, name: String) -> napi::Result<Unknown<'a>> {
+        let mut res_js_val = JsVal::Nil;
+
+        lua.inner.enter(|ctx| {
+            let key = ctx.intern(name.as_bytes());
+            let val = ctx.globals().get_value(ctx, key);
+
+            res_js_val = match val {
+                OValue::Nil => JsVal::Nil,
+                OValue::Boolean(b) => JsVal::Boolean(b),
+                OValue::Integer(i) => JsVal::Integer(i),
+                OValue::Number(f) => JsVal::Number(f),
+                OValue::String(s) => JsVal::String(s.as_bytes().to_vec()),
+                _ => JsVal::Nil,
+            };
+        });
 
         js_val_to_unknown(env, res_js_val)
     }

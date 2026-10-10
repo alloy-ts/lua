@@ -43,15 +43,23 @@ test("eval handles runtime/syntax errors properly", () => {
   expect(() => lua.eval("error('explicit lua error')")).toThrow();
 });
 
-test("setGlobal and getGlobal manage global primitive variables", () => {
+test("globals() manages global primitive variables", () => {
+  const lua = Lua.full();
+  const globals = lua.globals();
+
+  globals.set(lua, "myNum", 999);
+  globals.set(lua, "myStr", "hello from JS");
+  globals.set(lua, "myBool", true);
+
+  expect(globals.get(lua, "myNum")).toBe(999);
+  expect(globals.get(lua, "myStr")).toBe("hello from JS");
+  expect(globals.get(lua, "myBool")).toBe(true);
+  expect(globals.get(lua, "nonExistent")).toBeUndefined();
+});
+
+test("setGlobal and getGlobal forwarders work properly", () => {
   const lua = Lua.full();
 
-  lua.setGlobal("myNum", 999);
-  lua.setGlobal("myStr", "hello from JS");
-  lua.setGlobal("myBool", true);
-
-  expect(lua.getGlobal("myNum")).toBe(999);
-  expect(lua.getGlobal("myStr")).toBe("hello from JS");
-  expect(lua.getGlobal("myBool")).toBe(true);
-  expect(lua.getGlobal("nonExistent")).toBeUndefined();
+  lua.setGlobal("forwardedNum", 777);
+  expect(lua.getGlobal("forwardedNum")).toBe(777);
 });
