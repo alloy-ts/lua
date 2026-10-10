@@ -12,17 +12,16 @@ describe("Lua constructors", () => {
     expect(lua).toBeDefined();
     expect(typeof lua.eval).toBe("function");
     expect(lua.eval("return 1 + 1")).toBe(2);
-    // A default instance ships with standard libraries (math, string, table).
-    expect(lua.eval("return math ~= nil")).toBe(true);
+    // A default instance ships with the I/O library.
+    expect(lua.eval("return io ~= nil")).toBe(true);
   });
 
-  test("Lua.full() exposes standard libraries", () => {
-    expect(Lua.full().eval("return math ~= nil")).toBe(true);
-    expect(Lua.full().eval("return string ~= nil")).toBe(true);
+  test("Lua.full() exposes the I/O library", () => {
+    expect(Lua.full().eval("return io ~= nil")).toBe(true);
   });
 
-  test("Lua.core() exposes core standard libraries", () => {
-    expect(Lua.core().eval("return math ~= nil")).toBe(true);
+  test("Lua.core() omits the I/O library", () => {
+    expect(Lua.core().eval("return io ~= nil")).toBe(false);
   });
 
   test("Lua.empty() has no standard library", () => {
@@ -152,10 +151,11 @@ describe("standard-library loading", () => {
     expect(lua.eval("return math.floor(3.9)")).toBe(3);
   });
 
-  test("loadIo() executes without error on empty instance", () => {
+  test("loadIo() enables the I/O library", () => {
     const lua = Lua.empty();
     lua.loadCore();
-    expect(() => lua.loadIo()).not.toThrow();
+    lua.loadIo();
+    expect(lua.eval("return io ~= nil")).toBe(true);
   });
 });
 
