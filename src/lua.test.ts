@@ -92,29 +92,69 @@ describe("Lua.eval - value conversion", () => {
   });
 });
 
-describe("global variables", () => {
-  test("setGlobal / getGlobal round-trip scalars", () => {
+describe("global variables & Globals handle", () => {
+  test("globals().set / globals().get round-trip scalars", () => {
     const lua = Lua.full();
-    lua.setGlobal("num", 10);
-    lua.setGlobal("str", "hi");
-    lua.setGlobal("flag", true);
+    const globals = lua.globals();
+    globals.set("num", 10);
+    globals.set("str", "hi");
+    globals.set("flag", true);
 
-    expect(lua.getGlobal("num")).toBe(10);
-    expect(lua.getGlobal("str")).toBe("hi");
-    expect(lua.getGlobal("flag")).toBe(true);
+    expect(globals.get("num")).toBe(10);
+    expect(globals.get("str")).toBe("hi");
+    expect(globals.get("flag")).toBe(true);
   });
 
   test("globals set from JS are visible to later eval calls", () => {
     const lua = Lua.full();
-    lua.setGlobal("multiplier", 3);
+    lua.globals().set("multiplier", 3);
     expect(lua.eval("return multiplier * 4")).toBe(12);
+  });
+
+  test("JS function bound via globals.set is callable directly from Lua", () => {
+    const lua = Lua.full();
+    lua.globals().set("jsAdd", (a: number, b: number) => a + b);
+    expect(lua.eval("return jsAdd(15, 25)")).toBe(40);
+  });
+
+  test("JS function receiving multi-type parameters and returning complex table", () => {
+    const lua = Lua.full();
+    lua.globals().set("processUser", (name: string, age: number, tags: string[]) => {
+      return {
+        greeting: `Hello ${name}`,
+        isAdult: age >= 18,
+        tagCount: tags.length,
+      };
+    });
+
+    const res = lua.eval(`return processUser('Alice', 22, { 'ts', 'lua' })`);
+    expect(res).toEqual({
+      greeting: "Hello Alice",
+      isAdult: true,
+      tagCount: 2,
+    });
+  });
+
+  test("JS function throwing an error is caught in Lua via pcall", () => {
+    const lua = Lua.full();
+    lua.globals().set("failingFn", () => {
+      throw new Error("JS execution failed!");
+    });
+
+    const res = lua.eval(`
+      local ok, err = pcall(failingFn)
+      return { ok = ok, err = tostring(err) }
+    `) as { ok: boolean; err: string };
+
+    expect(res.ok).toBe(false);
+    expect(res.err).toContain("JS execution failed!");
   });
 
   test("nested tables round-trip through globals (1-indexed arrays)", () => {
     const lua = Lua.full();
-    lua.setGlobal("cfg", { db: { host: "localhost" }, ports: [1, 2, 3] });
+    lua.globals().set("cfg", { db: { host: "localhost" }, ports: [1, 2, 3] });
 
-    expect(lua.getGlobal("cfg")).toEqual({
+    expect(lua.globals().get("cfg")).toEqual({
       db: { host: "localhost" },
       ports: [1, 2, 3],
     });
@@ -122,15 +162,15 @@ describe("global variables", () => {
     expect(lua.eval("return cfg.ports[2]")).toBe(2);
   });
 
-  test("a global defined in Lua is readable via getGlobal", () => {
+  test("a global defined in Lua is readable via globals().get", () => {
     const lua = Lua.full();
     lua.eval("shared = 'from lua'");
-    expect(lua.getGlobal("shared")).toBe("from lua");
+    expect(lua.globals().get("shared")).toBe("from lua");
   });
 
   test("an unset global returns undefined", () => {
     const lua = Lua.full();
-    expect(lua.getGlobal("does_not_exist")).toBeUndefined();
+    expect(lua.globals().get("does_not_exist")).toBeUndefined();
   });
 });
 

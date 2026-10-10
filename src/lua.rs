@@ -2,7 +2,7 @@ use napi::bindgen_prelude::{Env, FromNapiValue, JsObjectValue, Object, ToNapiVal
 use napi::{Error as NapiError, JsValue, Unknown};
 use napi_derive::napi;
 
-use ottavino::{Lua as OLua, StashedExecutor, StashedThread};
+use ottavino::{Callback, CallbackReturn, Lua as OLua, StashedExecutor, StashedThread};
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -61,6 +61,14 @@ impl Lua {
     pub fn full() -> Self {
         Lua {
             inner: Rc::new(RefCell::new(OLua::full())),
+        }
+    }
+
+    /// Returns the Globals handle for interacting with global variables (`_ENV`).
+    #[napi]
+    pub fn globals(&mut self) -> Globals {
+        Globals {
+            lua: self.inner.clone(),
         }
     }
 
@@ -149,24 +157,17 @@ impl Lua {
         eval_result
     }
 
-    /// Get a global variable from Lua environment by name.
+    /// Get a global variable from Lua environment by name (delegates to globals().get()).
     #[napi]
     pub fn get_global<'js>(
         &mut self,
         env: &'js Env,
         name: String,
     ) -> Result<Unknown<'js>, NapiError> {
-        let mut get_result: Result<Unknown<'js>, NapiError> = ().into_unknown(env);
-        self.inner.borrow_mut().enter(|ctx| {
-            let key = ctx.intern(name.as_bytes());
-            let val = ctx.globals().get_raw(ottavino::Value::String(key));
-            get_result = ottavino_value_to_js(env, ctx, val);
-        });
-
-        get_result
+        self.globals().get(env, name)
     }
 
-    /// Set a global variable in Lua environment by name.
+    /// Set a global variable in Lua environment by name (delegates to globals().set()).
     #[napi]
     pub fn set_global<'js>(
         &mut self,
@@ -174,22 +175,7 @@ impl Lua {
         name: String,
         value: Unknown<'js>,
     ) -> Result<(), NapiError> {
-        let mut set_result: Result<(), NapiError> = Ok(());
-        self.inner
-            .borrow_mut()
-            .enter(|ctx| match js_to_ottavino_value(env, ctx, value) {
-                Ok(lua_val) => {
-                    let key = ctx.intern(name.as_bytes());
-                    if let Err(e) = ctx.globals().set(ctx, key, lua_val) {
-                        set_result = Err(NapiError::from_reason(e.to_string()));
-                    }
-                }
-                Err(e) => {
-                    set_result = Err(e);
-                }
-            });
-
-        set_result
+        self.globals().set(env, name, value)
     }
 
     /// Create a step-driven `LuaExecutor` for pacing execution with fuel limits.
@@ -268,6 +254,55 @@ impl Lua {
     }
 }
 
+/// Globals handle for interacting with global variables (`_ENV`).
+#[napi]
+pub struct Globals {
+    lua: Rc<RefCell<OLua>>,
+}
+
+#[napi]
+impl Globals {
+    /// Retrieves a global variable from the Lua environment by name.
+    #[napi]
+    pub fn get<'js>(&mut self, env: &'js Env, name: String) -> Result<Unknown<'js>, NapiError> {
+        let mut get_result: Result<Unknown<'js>, NapiError> = ().into_unknown(env);
+        self.lua.borrow_mut().enter(|ctx| {
+            let key = ctx.intern(name.as_bytes());
+            let val = ctx.globals().get_raw(ottavino::Value::String(key));
+            get_result = ottavino_value_to_js(env, ctx, val);
+        });
+
+        get_result
+    }
+
+    /// Binds a global variable in the Lua environment.
+    /// Converts JS primitives, objects/arrays to Lua tables, and JS functions to Ottavino Callbacks.
+    #[napi]
+    pub fn set<'js>(
+        &mut self,
+        env: &'js Env,
+        name: String,
+        value: Unknown<'js>,
+    ) -> Result<(), NapiError> {
+        let mut set_result: Result<(), NapiError> = Ok(());
+        self.lua
+            .borrow_mut()
+            .enter(|ctx| match js_to_ottavino_value(env, ctx, value) {
+                Ok(lua_val) => {
+                    let key = ctx.intern(name.as_bytes());
+                    if let Err(e) = ctx.globals().set(ctx, key, lua_val) {
+                        set_result = Err(NapiError::from_reason(e.to_string()));
+                    }
+                }
+                Err(e) => {
+                    set_result = Err(e);
+                }
+            });
+
+        set_result
+    }
+}
+
 /// A step-driven VM executor wrapper.
 #[napi]
 pub struct LuaExecutor {
@@ -280,7 +315,11 @@ pub struct LuaExecutor {
 impl LuaExecutor {
     /// Step execution with the given fuel amount.
     #[napi]
-    pub fn step<'js>(&mut self, env: &'js Env, fuel_amount: i32) -> Result<StepResult<'js>, NapiError> {
+    pub fn step<'js>(
+        &mut self,
+        env: &'js Env,
+        fuel_amount: i32,
+    ) -> Result<StepResult<'js>, NapiError> {
         if self.is_done {
             return Ok(StepResult {
                 done: true,
@@ -514,6 +553,108 @@ fn js_to_ottavino_value<'gc>(
             let s = unsafe { String::from_napi_value(env.raw(), js_val.raw())? };
             let interned = ctx.intern(s.as_bytes());
             Ok(ottavino::Value::String(interned))
+        }
+        ValueType::Function => {
+            let env_raw = env.raw();
+            let fn_raw = js_val.raw();
+
+            let mut js_ref = std::ptr::null_mut();
+            let status = unsafe { napi::sys::napi_create_reference(env_raw, fn_raw, 1, &mut js_ref) };
+            if status != napi::sys::Status::napi_ok {
+                return Err(NapiError::from_reason("Failed to create reference for JS function"));
+            }
+
+            struct JsRefHolder {
+                env_raw: napi::sys::napi_env,
+                js_ref: napi::sys::napi_ref,
+            }
+
+            impl Drop for JsRefHolder {
+                fn drop(&mut self) {
+                    unsafe {
+                        napi::sys::napi_delete_reference(self.env_raw, self.js_ref);
+                    }
+                }
+            }
+
+            let holder = Rc::new(JsRefHolder { env_raw, js_ref });
+
+            let callback = Callback::from_fn(&ctx, move |ctx, _exec, mut stack| {
+                let js_env = Env::from_raw(holder.env_raw);
+
+                let mut fn_val = std::ptr::null_mut();
+                let ref_status = unsafe {
+                    napi::sys::napi_get_reference_value(holder.env_raw, holder.js_ref, &mut fn_val)
+                };
+                if ref_status != napi::sys::Status::napi_ok || fn_val.is_null() {
+                    return Err(ottavino::Error::from_value(
+                        ottavino::Value::String(ctx.intern(b"JS function reference expired")),
+                    ));
+                }
+
+                let mut args = Vec::new();
+                while !stack.is_empty() {
+                    if let Some(val) = stack.pop_front() {
+                        args.push(val);
+                    }
+                }
+
+                let mut raw_this = std::ptr::null_mut();
+                unsafe { napi::sys::napi_get_undefined(holder.env_raw, &mut raw_this); }
+
+                let mut raw_args: Vec<napi::sys::napi_value> = Vec::new();
+                for arg in args {
+                    let js_arg = ottavino_value_to_js(&js_env, ctx, arg)?;
+                    raw_args.push(js_arg.raw());
+                }
+
+                let mut raw_ret = std::ptr::null_mut();
+                let status = unsafe {
+                    napi::sys::napi_call_function(
+                        holder.env_raw,
+                        raw_this,
+                        fn_val,
+                        raw_args.len(),
+                        if raw_args.is_empty() { std::ptr::null() } else { raw_args.as_mut_ptr() },
+                        &mut raw_ret,
+                    )
+                };
+
+                if status != napi::sys::Status::napi_ok {
+                    let mut js_exc = std::ptr::null_mut();
+                    let get_exc_status = unsafe {
+                        napi::sys::napi_get_and_clear_last_exception(holder.env_raw, &mut js_exc)
+                    };
+                    if get_exc_status == napi::sys::Status::napi_ok && !js_exc.is_null() {
+                        if let Ok(exc_val) = unsafe { Unknown::from_napi_value(holder.env_raw, js_exc) } {
+                            // If it's an Error object with a message property, extract message or convert value
+                            if let Ok(js_obj) = unsafe { Object::from_napi_value(holder.env_raw, js_exc) } {
+                                if let Ok(msg) = js_obj.get_named_property::<String>("message") {
+                                    return Err(ottavino::Error::from_value(
+                                        ottavino::Value::String(ctx.intern(msg.as_bytes())),
+                                    ));
+                                }
+                            }
+                            if let Ok(lua_exc) = js_to_ottavino_value(&js_env, ctx, exc_val) {
+                                return Err(ottavino::Error::from_value(lua_exc));
+                            }
+                        }
+                    }
+
+                    return Err(ottavino::Error::from_value(
+                        ottavino::Value::String(ctx.intern(b"JS function call failed")),
+                    ));
+                }
+
+                let ret = unsafe { Unknown::from_napi_value(holder.env_raw, raw_ret)? };
+                let lua_ret = js_to_ottavino_value(&js_env, ctx, ret)?;
+
+                stack.push_back(lua_ret);
+
+                Ok(CallbackReturn::Return)
+            });
+
+            Ok(ottavino::Value::Function(callback.into()))
         }
         ValueType::Object => {
             if js_val.is_array()? {

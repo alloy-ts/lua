@@ -9,6 +9,7 @@ The `@alloy-ts/lua` package provides a high-performance JavaScript/TypeScript in
 - [Core Ottavino Types & NAPI Exposure Matrix](#core-ottavino-types--napi-exposure-matrix)
 - [Exported Classes & Interfaces](#exported-classes--interfaces)
   - [`Lua`](#lua)
+  - [`Globals`](#globals)
   - [`LuaExecutor`](#luaexecutor)
   - [`LuaThread`](#luathread)
   - [`StepResult`](#stepresult)
@@ -56,8 +57,9 @@ The `Lua` class represents an isolated Lua VM state.
 #### Evaluation & Execution
 
 - **`lua.eval(code: string): unknown`**: Compiles and executes the given Lua code string, returning converted JS result.
-- **`lua.setGlobal(name: string, value: unknown): void`**: Binds a JS primitive, array, or object into the Lua global environment.
-- **`lua.getGlobal(name: string): unknown`**: Retrieves a global variable from the Lua VM as a converted JS value.
+- **`lua.globals(): Globals`**: Returns a `Globals` handle for interacting with global variables (`_ENV`).
+- **`lua.setGlobal(name: string, value: unknown): void`**: Binds a JS primitive, array, object, or JS function into the Lua global environment (delegates to `globals().set()`).
+- **`lua.getGlobal(name: string): unknown`**: Retrieves a global variable from the Lua VM as a converted JS value (delegates to `globals().get()`).
 - **`lua.executor(code: string): LuaExecutor`**: Creates a step-driven `LuaExecutor` wrapper.
 - **`lua.createThread(codeOrFnName: string): LuaThread`**: Creates a suspended Lua coroutine `LuaThread` handle.
 - **`lua.loadCore(): void`**: Loads core standard libraries into an existing instance.
@@ -65,6 +67,24 @@ The `Lua` class represents an isolated Lua VM state.
 - **`lua.totalMemory(): number`**: Returns total memory used by the VM in bytes.
 - **`lua.gcCollect(): void`**: Runs a full garbage collection cycle.
 - **`lua.gcMetrics(): GcMetrics`**: Returns allocator memory metrics.
+
+---
+
+### `Globals`
+
+Provides direct access to global variables in the Lua environment (`_ENV`).
+
+- **`globals.get(name: string): unknown`**: Retrieves a global variable from the Lua environment by name.
+- **`globals.set(name: string, value: unknown): void`**: Binds a global variable in the Lua environment. Converts primitives, JS arrays/objects into Lua tables, and JS functions into callable Lua `Callback` objects.
+
+```typescript
+const globals = lua.globals();
+globals.set("appName", "My App");
+globals.set("addNumbers", (a: number, b: number) => a + b);
+
+console.log(globals.get("appName")); // "My App"
+console.log(lua.eval("return addNumbers(10, 20)")); // 30
+```
 
 ---
 
@@ -155,6 +175,7 @@ export interface GcMetrics {
 | `string` | `string` | String interned in Lua VM |
 | `Array` | `table` | Converted to 1-indexed sequential table |
 | `Object` | `table` | Plain objects converted to string-keyed hash table |
+| `Function` | `function` (`Callback`) | Converted to an `ottavino::Callback`, callable directly inside Lua code |
 
 ---
 

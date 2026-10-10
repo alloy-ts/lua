@@ -30,6 +30,16 @@ console.log("add(15, 27) =", addResult);
 const greetResult = lua.eval("return greet('Alice', 'Dr.')");
 console.log("greet('Alice', 'Dr.') =", greetResult);
 
+console.log("\n=== Demo: Exposing TS/JS Functions to Lua via Globals ===");
+
+// Bind a native TS function into Lua globals
+const globals = lua.globals();
+globals.set("jsMultiply", (a: number, b: number) => a * b);
+globals.set("jsLog", (msg: string) => `[TS LOG] ${msg}`);
+
+console.log("jsMultiply(6, 7) called from Lua:", lua.eval("return jsMultiply(6, 7)"));
+console.log("jsLog called from Lua:", lua.eval("return jsLog('Hello from Lua environment!')"));
+
 console.log("\n=== Demo: Higher-Order Functions, Callbacks, and Closures in Lua ===");
 
 // 2. Defining functions with closures (stateful functions) in Lua
