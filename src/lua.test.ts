@@ -191,3 +191,34 @@ describe("error handling", () => {
     expect(() => lua.eval("error('boom')")).toThrow(/Lua runtime error/);
   });
 });
+
+describe("host callbacks (register)", () => {
+  test("can register a host JS function and call it from Lua", () => {
+    const lua = Lua.core();
+    lua.register("add", (a: number, b: number) => a + b);
+    expect(lua.eval("return add(10, 20)")).toBe(30);
+  });
+
+  test("passes arguments and converts return values", () => {
+    const lua = Lua.core();
+    lua.register("greet", (name: string) => `Hello, ${name}!`);
+    expect(lua.eval("return greet('World')")).toBe("Hello, World!");
+  });
+
+  test("propagates JS callback exceptions into Lua pcall", () => {
+    const lua = Lua.core();
+    lua.register("fail", () => {
+      throw new Error("JS failure");
+    });
+    expect(lua.eval("local ok, err = pcall(fail); return ok")).toBe(false);
+    expect(lua.eval("local ok, err = pcall(fail); return err")).toBe("JS failure");
+  });
+
+  test("propagates JS callback exceptions to top-level eval error", () => {
+    const lua = Lua.core();
+    lua.register("fail", () => {
+      throw new Error("JS uncaught failure");
+    });
+    expect(() => lua.eval("fail()")).toThrow(/JS uncaught failure/);
+  });
+});

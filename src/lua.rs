@@ -555,10 +555,10 @@ impl Lua {
 
         self.inner.enter(|ctx| {
             let callback = Callback::from_fn(ctx.mutation(), move |ctx, _exec, mut stack| {
-                HOST_CALLBACKS.with(|cell| {
+                let res = HOST_CALLBACKS.with(|cell| {
                     let guard = cell.borrow();
                     let Some((func_ref, env)) = guard.get(id as usize).and_then(|o| o.as_ref()) else {
-                        return;
+                        return Err(NapiError::from_reason("Host callback handle invalid"));
                     };
                     let mut func_val = ptr::null_mut();
                     unsafe {
@@ -572,24 +572,26 @@ impl Lua {
                         for v in &stack {
                             let u = match ottavino_value_to_js(env, ctx, &mut *h, v) {
                                 Ok(u) => u,
-                                Err(_) => unsafe { Unknown::from_raw_unchecked(env.raw(), ptr::null_mut()) },
+                                Err(e) => return Err(e),
                             };
                             js_args.push(u);
                         }
                     }
 
-                    match call_js_function(env, &func, &js_args) {
-                        Ok(result) => match js_to_ottavino_value(env, ctx, result) {
-                            Ok(val) => {
-                                stack.clear();
-                                stack.push_back(val);
-                            }
-                            Err(_) => stack.clear(),
-                        },
-                        Err(_) => stack.clear(),
-                    }
+                    let result = call_js_function(env, &func, &js_args)?;
+                    let lua_val = js_to_ottavino_value(env, ctx, result)?;
+                    stack.clear();
+                    stack.push_back(lua_val);
+                    Ok(())
                 });
-                Ok(CallbackReturn::Return)
+
+                match res {
+                    Ok(()) => Ok(CallbackReturn::Return),
+                    Err(e) => {
+                        let err_val = ottavino::Value::String(ctx.intern(e.reason.as_bytes()));
+                        Err(ottavino::Error::from(err_val))
+                    }
+                }
             });
 
             let key = ctx.intern(name.as_bytes());
@@ -983,8 +985,25 @@ fn call_js_function<'a>(
         unsafe {
             sys::napi_get_and_clear_last_exception(env_raw, &mut exc);
         }
-        Err(NapiError::from_reason(
-            "JS host callback threw an exception",
-        ))
+        let msg = if !exc.is_null() {
+            unsafe {
+                if let Ok(obj) = Object::from_napi_value(env_raw, exc) {
+                    if let Ok(msg_prop) = obj.get_named_property::<String>("message") {
+                        msg_prop
+                    } else if let Ok(str_val) = String::from_napi_value(env_raw, exc) {
+                        str_val
+                    } else {
+                        "JS host callback threw an exception".to_string()
+                    }
+                } else if let Ok(str_val) = String::from_napi_value(env_raw, exc) {
+                    str_val
+                } else {
+                    "JS host callback threw an exception".to_string()
+                }
+            }
+        } else {
+            "JS host callback threw an exception".to_string()
+        };
+        Err(NapiError::from_reason(msg))
     }
 }
