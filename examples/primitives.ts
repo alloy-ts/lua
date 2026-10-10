@@ -87,7 +87,7 @@ const connectionMessage = lua.eval(
 );
 console.log("Lua evaluation output:", connectionMessage);
 
-// Demonstrate creating read-only / constant semantics in Lua using metatables if needed
+// Demonstrate creating read-only / constant semantics in Lua using metatables
 lua.eval(`
   CONSTANTS = {}
   setmetatable(CONSTANTS, {
