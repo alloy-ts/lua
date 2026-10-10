@@ -79,7 +79,7 @@ See [examples/function.ts](examples/function.ts) for a runnable function and clo
 
 ### 3. Asynchronous Execution & Coroutines with JS Promises
 
-Lua natively supports cooperative multitasking via **Coroutines**. You can yield values from Lua coroutines back to JavaScript Promises (e.g. for async I/O or DB requests) and resume Lua execution once the async data resolves:
+Lua natively supports cooperative multitasking via **Coroutines**. You can yield values from Lua coroutines back to JavaScript Promises and resume Lua execution once the async data resolves:
 
 ```typescript
 import { Lua } from "@lib/module";
@@ -94,22 +94,56 @@ lua.eval(`
   end)
 `);
 
-// Step 1: Resume coroutine and receive yield payload
+// Resume coroutine, resolve async Promise, and resume with result
 const [_, request] = lua.eval("return { coroutine.resume(co) }");
-
-// Step 2: Perform async operation in TS and resume Lua coroutine
 const userData = await fetchUserAsync(request.id);
 lua.setGlobal("resumedVal", userData);
 const [__, result] = lua.eval("return { coroutine.resume(co, resumedVal) }");
-console.log(result); // "Completed for Alice"
 ```
 
-See [examples/async.ts](examples/async.ts) for a runnable async coroutine example. Run examples with:
+See [examples/async.ts](examples/async.ts) for a runnable async coroutine example.
+
+### 4. Memory Monitoring & Manual Garbage Collection
+
+Monitor memory usage in bytes and manually trigger garbage collection cycles:
+
+```typescript
+import { Lua } from "@lib/module";
+
+const lua = Lua.full();
+console.log(`Memory used: ${lua.totalMemory()} bytes`);
+
+// Perform manual garbage collection and fetch GC metrics
+lua.gcCollect();
+const metrics = lua.gcMetrics();
+console.log("Total Allocation:", metrics.totalAllocation);
+```
+
+See [examples/memory.ts](examples/memory.ts) for a runnable memory management example.
+
+### 5. Standard Library Sandboxing
+
+Selectively load standard libraries or start with a completely empty VM for secure sandboxing:
+
+```typescript
+import { Lua } from "@lib/module";
+
+// Create an empty VM without standard libraries
+const emptyLua = Lua.empty();
+
+// Progressively load core libraries (math, string, table, coroutine) and I/O
+emptyLua.loadCore();
+emptyLua.loadIo();
+```
+
+See [examples/stdlib.ts](examples/stdlib.ts) for a runnable sandboxing example. Run all examples with:
 
 ```bash
 node --import @oxc-node/core examples/globals.ts
 node --import @oxc-node/core examples/function.ts
 node --import @oxc-node/core examples/async.ts
+node --import @oxc-node/core examples/memory.ts
+node --import @oxc-node/core examples/stdlib.ts
 ```
 
 ## Features
