@@ -1,21 +1,24 @@
 # API Reference: Ottavino Crate vs. NAPI Bindings
 
-This document provides a complete reference for the Lua NAPI bindings exported by `@lib/module` (`dist/index.js` / `index.js`), along with an architectural mapping comparing the underlying Rust **`ottavino`** (formerly Piccolo) crate APIs to the exposed NAPI methods.
+This document provides a complete reference for the NAPI bindings exported by `@lib/module` (`dist/index.js` / `index.js`), detailing the mapping between the underlying Rust **`ottavino`** crate primitives and our JavaScript/TypeScript NAPI interface.
 
 ---
 
-## 1. Summary API Overview & Coverage
+## 1. Ottavino Crate Primitives vs. NAPI Binding Coverage
 
-| Feature Category | Ottavino Rust API | NAPI Method (TypeScript / JS) | Status / Coverage |
+| Ottavino Crate Type / API | Description in Ottavino | Exposed NAPI Binding / Method | Status |
 | :--- | :--- | :--- | :--- |
-| **Constructors** | `OLua::full()`, `OLua::core()`, `OLua::empty()` | `Lua.full()`, `Lua.core()`, `Lua.empty()` | **Covered** |
-| **Code Execution** | `Closure::load`, `Executor::start`, `OLua::finish` | `lua.eval(code: string): unknown` | **Covered** |
-| **Global Variables** | `ctx.globals().set(...)` | `lua.setGlobal(name: string, value: unknown): void` | **Covered** |
-| **Global Variable Retrieval** | `ctx.globals().get_value(...)` | `lua.getGlobal(name: string): unknown` | **Covered** |
-| **Standard Libraries** | `OLua::load_core()`, `OLua::load_io()` | `lua.loadCore(): void`, `lua.loadIo(): void` | **Covered** |
-| **Memory Monitoring** | `OLua::total_memory()` | `lua.totalMemory(): number` | **Covered** |
-| **Garbage Collection** | `OLua::gc_collect()` | `lua.gcCollect(): void` | **Covered** |
-| **GC Metrics** | `OLua::gc_metrics()` | `lua.gcMetrics(): GcMetrics` | **Covered** |
+| **`ottavino::Lua`** | Top-level VM instance managing the garbage collection arena. | `Lua` class (`Lua.full()`, `Lua.core()`, `Lua.empty()`) | **Covered** |
+| **`ottavino::Context<'gc>`** | Execution context providing access to globals, registry, and string interner. | Wrapped internally during NAPI calls (`setGlobal`, `getGlobal`, `eval`). | **Covered** |
+| **`ottavino::Executor`** | VM execution engine that steps through Lua closures. | Driven inside `eval()` via `Executor::start` and `finish`. | **Covered** |
+| **`ottavino::StashedExecutor`** | GC root handle for `Executor` across collection cycles. | Managed internally when running `Lua::finish` / `eval`. | **Covered** |
+| **`ottavino::Value`** | Enum representing Lua data types (`Nil`, `Boolean`, `Integer`, `Number`, `String`, `Table`, `Function`, `Thread`, `UserData`). | Automatic conversion to/from JS primitives (`number`, `string`, `boolean`, `null`/`undefined`) and objects -> tables. | **Covered** |
+| **`ottavino::Table`** | Garbage-collected associative array table. | JS Objects are converted to/from Lua tables in `setGlobal` / `eval`. | **Covered** |
+| **`ottavino::Closure`** | Compiled Lua function prototype bound to an environment. | Compiled & executed via `Closure::load` inside `eval()`. | **Covered** |
+| **`ottavino::Fuel`** | Step counter for bounding VM execution duration. | Configured internally during `Lua::finish` execution steps. | **Covered** |
+| **`ottavino::Callback`** | Host functions implemented in Rust. | Internal stdlib callbacks preloaded in `full()` & `core()`. | **Covered** |
+| **`ottavino::Thread`** | Lua coroutine execution context. | Accessible in Lua via `coroutine` library in `full()` & `core()`. | **Covered** |
+| **`gc_arena::Metrics`** | Garbage collection allocator statistics. | Exposed via `lua.gcMetrics()` and `lua.totalMemory()`. | **Covered** |
 
 ---
 
@@ -40,7 +43,7 @@ Instantiates an empty, bare-bones Lua VM with no standard libraries preloaded.
 
 #### Methods
 
-##### [Code Execution]
+##### Code Execution
 ###### `lua.eval(code: string): unknown`
 Compiles and executes the given Lua code string, returning the evaluated result as a native JavaScript value (`number`, `string`, `boolean`, or `undefined` for `nil`).
 - **Parameters:**
@@ -48,7 +51,7 @@ Compiles and executes the given Lua code string, returning the evaluated result 
 - **Returns:** `unknown` — The converted return value.
 - **Throws:** Throws a JavaScript `Error` on syntax or execution errors.
 
-##### [Global Variable Management]
+##### Global Variable Management
 ###### `lua.setGlobal(name: string, value: unknown): void`
 Sets a global variable or constant in the Lua VM environment from a JS primitive or object. Plain JS objects are recursively converted into Lua tables.
 - **Parameters:**
@@ -61,14 +64,14 @@ Retrieves a global variable from the Lua VM environment, converting it into a JS
   - `name`: `string` — Variable name to retrieve.
 - **Returns:** `unknown` — The primitive JS value or `undefined` if unset/nil.
 
-##### [Standard Library Management]
+##### Standard Library Management
 ###### `lua.loadCore(): void`
 Loads core standard libraries (`math`, `string`, `table`, `coroutine`, base) into an existing Lua state.
 
 ###### `lua.loadIo(): void`
 Loads I/O standard libraries into an existing Lua state.
 
-##### [Memory & Garbage Collection]
+##### Memory & Garbage Collection
 ###### `lua.totalMemory(): number`
 Returns the total memory used by the Lua VM in bytes.
 

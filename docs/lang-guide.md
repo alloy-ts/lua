@@ -1,6 +1,6 @@
 # Lua Language Guide & Ottavino VM Architecture
 
-This guide covers the fundamentals of the **Lua 5.4** scripting language, its standard library modules, and the architecture of **`ottavino`** (formerly Piccolo) — the pure Rust Lua 5.4 implementation powering this NAPI addon.
+This guide covers the fundamentals of the **Lua 5.4** scripting language, its standard library modules, and the internal architecture of **`ottavino`** (formerly Piccolo) — the pure Rust Lua 5.4 implementation powering this NAPI addon.
 
 ---
 
@@ -61,16 +61,16 @@ When running in `Lua.full()` or `Lua.core()` modes, standard library modules are
 
 ## 3. Ottavino / Piccolo VM Architecture
 
-**`ottavino`** is a pure Rust implementation of the Lua 5.4 VM designed for safe sandboxing and resiliency.
+**`ottavino`** is a pure Rust implementation of the Lua 5.4 VM designed for safe sandboxing, memory safety, and resiliency.
 
-### Stackless Interpreter Design
-Unlike standard C-Lua (PUC-Rio Lua) which relies on the C function call stack, Ottavino uses a **stackless** (trampoline) interpreter design:
-- Execution state is reified into an `Executor` state object that is driven by polling.
-- Callbacks and script steps do not lock the Rust call stack.
-- Long-running scripts can be paused, bounded, or interrupted without unwinding issues.
+### Stackless Interpreter & Execution Engine
+Unlike standard C-Lua (PUC-Rio Lua) which relies on the native call stack, Ottavino utilizes a stackless execution model:
+- Execution state is reified into an `Executor` state object driven by polling.
+- Callbacks and VM execution steps do not lock the host call stack.
+- Long-running scripts can be paused, bounded, or interrupted safely without C `longjmp` stack unwinding issues.
 
 ### Memory Safety & `gc-arena`
-- Ottavino uses `gc-arena` for garbage collection, providing strict memory safety guarantees in safe Rust.
+- Ottavino relies on `gc-arena` for garbage collection, providing compile-time memory safety guarantees in safe Rust.
 - Memory usage is tracked accurately (`totalMemory()`, `gcMetrics()`), and garbage collection can be triggered explicitly (`gcCollect()`).
 
 ### Sandboxing & Fine-Grained Library Control
@@ -80,5 +80,5 @@ Ottavino provides modular initialization tiers for secure sandboxing:
 - **`Lua.full()`**: Full Lua environment including I/O access (`io`).
 
 ### Bounded Execution & Fuel Pacing
-- The interpreter loop uses a **Fuel** step counter.
+- The interpreter loop uses a **Fuel** step counter (`Fuel::with(fuel_amount)`).
 - Allows pacing and bounding script steps to prevent infinite loop attacks (`while true do end`).
