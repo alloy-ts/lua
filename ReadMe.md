@@ -13,23 +13,38 @@ To support embedded Lua in TypeScript/JavaScript via NAPI:
 3. **Type Conversion**: JS primitives (`number`, `string`, `boolean`, `null/undefined`) and structures (`object`, `array`) are mapped bidirectionally to Lua types (`integer`, `number`, `string`, `table`, `nil`).
 4. **Exported API**: The `Lua` class is exported via NAPI to TypeScript/JavaScript, providing methods to evaluate code, manage global variables, load standard libraries, and control garbage collection.
 
-## Examples & Usage
+## Defining Lua Variables, Objects & Constants from TS/JS
 
-### 1. Defining Lua Primitives & Constants from TS/JS
-
-You can define Lua global variables and constants from TypeScript using `lua.setGlobal(name, value)`:
+You can define Lua global variables, primitives, objects, and read-only constants from TypeScript using `lua.setGlobal(name, value)` and `lua.eval()`:
 
 ```typescript
 import { Lua } from "@lib/module";
 
 const lua = Lua.full();
 
-// Set primitives (number, string, boolean, null)
+// 1. Primitive Variables (number, string, boolean, null)
 lua.setGlobal("MAX_CONNECTIONS", 100);
 lua.setGlobal("APP_NAME", "Lua Engine");
 lua.setGlobal("DEBUG_MODE", true);
 
-// Define read-only constants in Lua via metatables
+// 2. Objects & Arrays (Converted to Lua tables)
+lua.setGlobal("user", {
+  id: 101,
+  username: "alice",
+  profile: { firstName: "Alice", age: 28 },
+  roles: ["admin", "developer"],
+});
+
+// Modify object fields inside Lua
+lua.eval(`
+  user.profile.age = 29
+  table.insert(user.roles, "lead")
+`);
+
+// Fetch updated object back in JS/TS
+const updatedUser = lua.getGlobal("user");
+
+// 3. Read-Only Constants (Protected via Lua metatables)
 lua.eval(`
   CONSTANTS = setmetatable({}, {
     __index = { MAX_RETRIES = 5, ENVIRONMENT = "production" },
@@ -40,37 +55,11 @@ lua.eval(`
 `);
 ```
 
-See [examples/primitives.ts](examples/primitives.ts) for a runnable primitives example.
+See [examples/globals.ts](examples/globals.ts) for a complete runnable example demonstrating primitives, variables, objects, arrays, constants, and OOP objects. Run it with:
 
-### 2. Defining Lua Objects & Tables from TS/JS
-
-JavaScript objects and arrays are automatically converted to Lua tables when passed via NAPI:
-
-```typescript
-import { Lua } from "@lib/module";
-
-const lua = Lua.full();
-
-// Define a JS object and export it to Lua as a global table
-lua.setGlobal("user", {
-  id: 101,
-  username: "alice",
-  profile: { firstName: "Alice", age: 28 },
-  roles: ["admin", "developer"],
-});
-
-// Access and modify object properties inside Lua scripts
-lua.eval(`
-  user.profile.age = 29
-  table.insert(user.roles, "lead")
-`);
-
-// Fetch the modified object back into JS/TS
-const updatedUser = lua.getGlobal("user");
-console.log(updatedUser.profile.age); // 29
+```bash
+node --import @oxc-node/core examples/globals.ts
 ```
-
-See [examples/object.ts](examples/object.ts) for a runnable object/table example.
 
 ## Features
 
