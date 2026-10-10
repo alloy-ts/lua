@@ -70,9 +70,10 @@ console.log(`Memory used: ${lua.totalMemory()} bytes`);
 lua.gcCollect();
 ```
 
-## API Reference
+## API & Language Guides
 
-For detailed type declarations and complete API documentation, see [docs/api.md](./docs/api.md).
+- For detailed type declarations and complete API documentation, see [docs/api.md](./docs/api.md).
+- For a comprehensive Lua 5.4 language guide, standard library overview, and Ottavino VM extensions, see [docs/lang-guide.md](./docs/lang-guide.md).
 
 ### Constructors
 
