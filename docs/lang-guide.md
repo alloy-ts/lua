@@ -218,7 +218,15 @@ In addition to standard Lua 5.4 `coroutine` functions, Ottavino adds two extensi
 - **Incremental Mark-and-Sweep GC (`gc-arena`)**: Memory management in Ottavino uses the Rust `gc-arena` collector. This eliminates memory corruption, buffer overflows, and double-free bugs present in C-based VMs.
 - **Real-Time Memory Metrics**: `lua.totalMemory()` and `lua.gcMetrics()` provide transparent visibility into allocator memory debt and total memory tracked by the VM.
 
-### 3.3 Sandboxing & Isolation
+### 3.3 Sandboxing, WebAssembly & WASI Preview 3 (WASI p3) Compatibility
 
-- Unsafe C libraries (such as raw OS system calls or file handles) are isolated and sandboxed out by default.
-- State is fully isolated per `Lua` instance, allowing multi-tenant execution in Node.js applications without global state pollution.
+- **`Lua.core()` (Pure In-Memory Execution):**
+  - Contains base, coroutine, math, string, and table libraries.
+  - Because `Lua.core()` performs **no host file system I/O, system sockets, or raw OS syscalls**, it runs purely in-memory.
+  - It is 100% compatible with WASI Preview 1, WASI Preview 2, **WASI Preview 3 (WASI p3)**, browser WASM, and untrusted sandbox runtimes without requiring host WASI I/O capabilities.
+
+- **`Lua.full()` (Full Environment):**
+  - Includes `load_io()`. In WebAssembly / WASI targets (like `wasm32-wasip1-threads` or WASI p3), standard input/output streams (`print`, `io.stdout`, `io.stderr`) map to WASI stream primitives (`wasi:io/streams`).
+
+- **Isolation:**
+  - State is fully isolated per `Lua` instance, allowing safe multi-tenant script execution without global state leakage.
