@@ -13,6 +13,37 @@ To support embedded Lua in TypeScript/JavaScript via NAPI:
 3. **Type Conversion**: JS primitives (`number`, `string`, `boolean`, `null/undefined`) and structures (`object`, `array`) are mapped bidirectionally to Lua types (`integer`, `number`, `string`, `table`, `nil`).
 4. **Exported API**: The `Lua` class is exported via NAPI to TypeScript/JavaScript, providing methods to evaluate code, manage global variables, load standard libraries, and control garbage collection.
 
+## Defining Lua Primitives & Constants from TS/JS
+
+You can define Lua global variables and constants from TypeScript using `lua.setGlobal(name, value)`:
+
+```typescript
+import { Lua } from "@lib/module";
+
+const lua = Lua.full();
+
+// 1. Set primitives (number, string, boolean, null)
+lua.setGlobal("MAX_CONNECTIONS", 100);
+lua.setGlobal("APP_NAME", "Lua Engine");
+lua.setGlobal("DEBUG_MODE", true);
+
+// 2. Set structured types (JS objects & arrays -> Lua tables)
+lua.setGlobal("SERVER_CONFIG", { host: "127.0.0.1", port: 8080 });
+lua.setGlobal("ALLOWED_ROLES", ["admin", "editor"]);
+
+// 3. Define read-only constants in Lua via metatables
+lua.eval(`
+  CONSTANTS = setmetatable({}, {
+    __index = { MAX_RETRIES = 5, ENVIRONMENT = "production" },
+    __newindex = function(_, key, _)
+      error("Attempt to modify read-only constant: " .. tostring(key), 2)
+    end
+  })
+`);
+```
+
+See [examples/primitives.ts](examples/primitives.ts) for a runnable example.
+
 ## Features
 
 - **Full Lua Environment**: Create sandboxed Lua states with empty, core, or full standard libraries.
@@ -52,6 +83,29 @@ console.log(arrayResult); // [10, 20, 30]
 console.log(`Memory used: ${lua.totalMemory()} bytes`);
 lua.gcCollect();
 ```
+
+## Cross-Building & WebAssembly (WASM / WASI / Browser)
+
+### Cross-Building All Targets
+
+NAPI targets are defined in `package.json` under `napi.targets`. To build for all configured native and WebAssembly targets:
+
+```bash
+# Build default target
+npm run build:napi
+
+# Cross-build specific WebAssembly / WASI target
+npm run build:napi -- --target wasm32-wasip1-threads
+```
+
+### Pure Rust Advantage
+
+Because `ottavino` is a pure Rust Lua VM, cross-compiling to WebAssembly does not require external C toolchains or system C libraries.
+
+### Browser & WASI p3 Support with emnapi / emscripten
+
+- **WASI (Preview 1 / WASI p3)**: The `wasm32-wasip1` / `wasm32-wasip1-threads` targets produce `.wasm` binaries and `.wasi.cjs` loaders that run in Node.js and WASI runtimes. For WASI Preview 2/3 component runtimes, standard WASI p1-to-p2/p3 adapters wrap the generated WebAssembly binary without requiring WIT definitions.
+- **Browsers & emnapi**: Dev dependencies include `@emnapi/core`, `@emnapi/runtime`, and `emnapi`. When building with Emscripten (`wasm32-unknown-emscripten`) or linking via `emnapi`, Node-API host functions (`env.napi_*`) are mapped directly to browser JS runtimes, enabling embedded Lua execution in WebAssembly inside modern web browsers.
 
 ## API Reference
 
