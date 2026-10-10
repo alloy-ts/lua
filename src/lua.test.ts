@@ -191,3 +191,51 @@ describe("error handling", () => {
     expect(() => lua.eval("error('boom')")).toThrow(/Lua runtime error/);
   });
 });
+
+describe("host callbacks (lua.register)", () => {
+  test("registers a JS function callable from Lua with arguments and return value", () => {
+    const lua = Lua.full();
+    lua.register("add", (a: number, b: number) => a + b);
+    expect(lua.eval("return add(15, 27)")).toBe(42);
+  });
+
+  test("registers a JS function that manipulates strings and booleans", () => {
+    const lua = Lua.full();
+    lua.register("greet", (name: string, loud: boolean) => {
+      const msg = `Hello, ${name}!`;
+      return loud ? msg.toUpperCase() : msg;
+    });
+    expect(lua.eval("return greet('World', true)")).toBe("HELLO, WORLD!");
+    expect(lua.eval("return greet('World', false)")).toBe("Hello, World!");
+  });
+
+  test("registers a JS function returning arrays and objects", () => {
+    const lua = Lua.full();
+    lua.register("makeUser", (id: number, name: string) => ({
+      id,
+      name,
+      roles: ["user", "admin"],
+    }));
+    expect(lua.eval("local u = makeUser(1, 'Alice'); return u.roles[2]")).toBe("admin");
+  });
+
+  test("propagates JS errors to Lua and can be caught with pcall", () => {
+    const lua = Lua.full();
+    lua.register("fail", () => {
+      throw new Error("JS error inside callback");
+    });
+
+    const result = lua.eval("local ok, err = pcall(fail); return { ok, tostring(err) }") as [
+      boolean,
+      string,
+    ];
+    expect(result[0]).toBe(false);
+    expect(result[1]).toContain("JS host callback threw an exception");
+  });
+
+  test("JS functions passed via setGlobal work as callbacks", () => {
+    const lua = Lua.full();
+    lua.setGlobal("multiply", (x: number, y: number) => x * y);
+    expect(lua.eval("return multiply(6, 7)")).toBe(42);
+  });
+});
