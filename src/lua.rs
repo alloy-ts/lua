@@ -1,4 +1,3 @@
-use napi::bindgen_prelude::{Env, Function as NapiFunction, JsValue};
 use napi_derive::napi;
 use ottavino::{
     Closure as OClosure, Context as OContext, Executor as OExecutor, Fuel as OFuel, Lua as OLua,
