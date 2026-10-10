@@ -13,8 +13,7 @@ environments without external native C dependencies.
   full standard libraries.
 - **Eval Lua Code**: Run arbitrary Lua scripts and return JavaScript primitives,
   objects, and arrays.
-- **Global Variable Binding**: Get and set global variables in the Lua VM
-  directly from JS/TS.
+- **Globals API & Host Callbacks**: Bind global variables (`lua.globals().get()` / `lua.globals().set()`) and register JavaScript functions that Lua code can invoke directly.
 - **GC & Memory Controls**: Monitor memory consumption (`totalMemory()`) and
   manually trigger garbage collection (`gcCollect()`).
 
@@ -33,12 +32,17 @@ console.log(result); // 7
 const greeting = lua.eval("return 'Hello, ' .. 'Lua!'");
 console.log(greeting); // "Hello, Lua!"
 
-// Set global variables from JS/TS
-lua.setGlobal("multiplier", 10);
-lua.setGlobal("data", { name: "Lua", active: true });
+// Interacting with Globals (aligned with Ottavino's ctx.globals() API)
+const globals = lua.globals();
+globals.set("multiplier", 10);
+globals.set("data", { name: "Lua", active: true });
 
-// Read global variables and use them in Lua code
-console.log(lua.getGlobal("multiplier")); // 10
+// Register JavaScript functions as callable Lua callbacks
+globals.set("add", (a: number, b: number) => a + b);
+console.log(lua.eval("return add(multiplier, 20)")); // 30
+
+// Read global variables
+console.log(globals.get("multiplier")); // 10
 const calculated = lua.eval("return data.name .. ' x' .. multiplier");
 console.log(calculated); // "Lua x10"
 
@@ -63,12 +67,13 @@ lua.gcCollect();
 
 ### Methods
 
+- `lua.globals(): Globals`: Returns the `Globals` handle for interacting with global variables (`_ENV`), mirroring Ottavino's `ctx.globals()` API.
+  - `globals.get(name: string): unknown`: Retrieves a global variable from the Lua VM environment.
+  - `globals.set(name: string, value: unknown): void`: Binds a global variable in the Lua VM environment. Primitives, objects, and arrays are converted to Lua types, and JS functions are converted to callable Lua callbacks.
 - `lua.eval(code: string): unknown`: Compiles and executes the given Lua code
   string, returning the result as a JavaScript value.
-- `lua.setGlobal(name: string, value: unknown): void`: Sets a global variable in
-  the Lua VM environment.
-- `lua.getGlobal(name: string): unknown`: Retrieves a global variable from the
-  Lua VM environment.
+- `lua.setGlobal(name: string, value: unknown): void`: Convenience alias for `globals().set(name, value)`.
+- `lua.getGlobal(name: string): unknown`: Convenience alias for `globals().get(name)`.
 - `lua.loadCore(): void`: Loads core standard libraries into an existing Lua
   state.
 - `lua.loadIo(): void`: Loads I/O standard libraries into an existing Lua state.
@@ -79,7 +84,7 @@ lua.gcCollect();
 
 ### Value Conversion
 
-Results of `eval` and values read via `getGlobal` are converted from Lua values
+Results of `eval` and values read via `globals().get()` / `getGlobal()` are converted from Lua values
 to JavaScript as follows:
 
 | Lua value            | JavaScript value                        |
@@ -95,12 +100,10 @@ to JavaScript as follows:
 | `thread`             | `"[lua thread]"` (placeholder string)   |
 | `userdata`           | `"[lua userdata]"` (placeholder string) |
 
-Conversely, `setGlobal` converts JavaScript `undefined`/`null` → `nil`,
+Conversely, `globals().set()` / `setGlobal()` converts JavaScript `undefined`/`null` → `nil`,
 `boolean` → `boolean`, integer-valued `number` → Lua `integer` (otherwise
-`number`), `string` → `string`, `Array` → sequential `table`, and plain `Object`
-→ keyed `table`. A Lua `table` is treated as an `Array` whenever its sequential
-length is greater than zero, so a table that mixes a sequence with hash keys may
-lose the hash entries.
+`number`), `string` → `string`, `Array` → sequential `table`, plain `Object`
+→ keyed `table`, and JS `Function` → callable Ottavino `Callback`.
 
 ## Development
 
@@ -122,7 +125,7 @@ The suite is split across two files:
   `eval`/`globals`/`memory` scenarios.
 - `src/lua.test.ts` — the full `Lua` API coverage: constructors (`new Lua()`,
   `Lua.full()`, `Lua.core()`, `Lua.empty()`), primitive/table `eval` results,
-  JS↔Lua value conversion, global variable binding, incremental stdlib loading
+  JS↔Lua value conversion, global variable and function callback binding, incremental stdlib loading
   (`loadCore`/`loadIo`), memory/GC controls, and error handling (compile vs.
   runtime errors).
 

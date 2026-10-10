@@ -92,7 +92,7 @@ describe("Lua.eval - value conversion", () => {
   });
 });
 
-describe("global variables", () => {
+describe("global variables and Globals API", () => {
   test("setGlobal / getGlobal round-trip scalars", () => {
     const lua = Lua.full();
     lua.setGlobal("num", 10);
@@ -102,6 +102,17 @@ describe("global variables", () => {
     expect(lua.getGlobal("num")).toBe(10);
     expect(lua.getGlobal("str")).toBe("hi");
     expect(lua.getGlobal("flag")).toBe(true);
+  });
+
+  test("lua.globals().get and lua.globals().set work as expected", () => {
+    const lua = Lua.full();
+    const globals = lua.globals();
+    globals.set("greeting", "Hello from globals");
+    globals.set("count", 42);
+
+    expect(globals.get("greeting")).toBe("Hello from globals");
+    expect(globals.get("count")).toBe(42);
+    expect(lua.eval("return greeting .. ' #' .. count")).toBe("Hello from globals #42");
   });
 
   test("globals set from JS are visible to later eval calls", () => {
@@ -122,15 +133,35 @@ describe("global variables", () => {
     expect(lua.eval("return cfg.ports[2]")).toBe(2);
   });
 
-  test("a global defined in Lua is readable via getGlobal", () => {
+  test("a global defined in Lua is readable via getGlobal / globals().get", () => {
     const lua = Lua.full();
     lua.eval("shared = 'from lua'");
     expect(lua.getGlobal("shared")).toBe("from lua");
+    expect(lua.globals().get("shared")).toBe("from lua");
   });
 
   test("an unset global returns undefined", () => {
     const lua = Lua.full();
     expect(lua.getGlobal("does_not_exist")).toBeUndefined();
+    expect(lua.globals().get("does_not_exist")).toBeUndefined();
+  });
+
+  test("registering a JS function via globals().set / setGlobal enables calling it from Lua", () => {
+    const lua = Lua.full();
+
+    // Register JS function via globals().set
+    lua.globals().set("jsAdd", (a: number, b: number) => a + b);
+    expect(lua.eval("return jsAdd(10, 20)")).toBe(30);
+
+    // Register JS string manipulator
+    lua.globals().set("jsGreet", (name: string) => `Hello, ${name}!`);
+    expect(lua.eval("return jsGreet('Ottavino')")).toBe("Hello, Ottavino!");
+
+    // Multiple arguments and return objects
+    lua.globals().set("makeUser", (name: string, age: number) => ({ name, age }));
+    expect(lua.eval("local u = makeUser('Alice', 30); return u.name .. ' is ' .. u.age")).toBe(
+      "Alice is 30",
+    );
   });
 });
 

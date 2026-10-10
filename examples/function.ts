@@ -3,7 +3,7 @@ import { Lua } from "../dist/index.js";
 // Initialize a full Lua instance
 const lua = Lua.full();
 
-console.log("=== Working with Functions in @alloy-ts/lua ===");
+console.log("=== Working with Functions & Globals in @alloy-ts/lua ===");
 
 // 1. Defining a Lua function using `eval`
 lua.eval(`
@@ -23,19 +23,22 @@ console.log("10 + 20 =", sum); // 30
 const greeting = lua.eval("return greet('Developer')");
 console.log("Greeting:", greeting); // "Hello, Developer!"
 
-// 2. Defining anonymous functions and assigning them to globals via eval
-lua.eval("multiply = function(a, b) return a * b end");
-lua.setGlobal("factor", 5);
-const product = lua.eval("return multiply(factor, 6)");
-console.log("5 * 6 =", product); // 30
+// 2. Interacting with global variables via `lua.globals()`
+const globals = lua.globals();
+globals.set("factor", 5);
+console.log("Read global 'factor':", globals.get("factor")); // 5
 
-// 3. Inspecting Lua functions from JS
-const addFunc = lua.getGlobal("add");
+// 3. Registering JavaScript functions as callable Lua functions
+globals.set("jsMultiply", (a: number, b: number) => a * b);
+globals.set("jsConcat", (s1: string, s2: string) => `${s1} ${s2}`);
+
+// Execute Lua code that invokes the registered JS functions
+const product = lua.eval("return jsMultiply(factor, 6)");
+console.log("Calling jsMultiply(5, 6) from Lua:", product); // 30
+
+const text = lua.eval("return jsConcat('Hello from', 'JavaScript!')");
+console.log("Calling jsConcat from Lua:", text); // "Hello from JavaScript!"
+
+// 4. Reading Lua functions from JS
+const addFunc = globals.get("add");
 console.log("Reading a Lua function from JS returns placeholder:", addFunc); // "[lua function]"
-
-// Note on JS functions in setGlobal:
-// Currently, passing a native JavaScript function to setGlobal is not supported;
-// JS functions fall through to `nil` in Lua because host JS callbacks are unexposed.
-lua.setGlobal("jsFn", () => 42);
-const jsFnCheck = lua.eval("return type(jsFn)");
-console.log("Passing a JS function to setGlobal results in type:", jsFnCheck); // "nil"

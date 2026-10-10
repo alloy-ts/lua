@@ -1,6 +1,12 @@
-use napi::bindgen_prelude::{Env, FromNapiValue, JsObjectValue, Object, ToNapiValue, ValueType};
+use std::sync::{Arc, Mutex};
+
+use napi::bindgen_prelude::{
+    Env, FromNapiValue, Function as JsFunction, FunctionRef, JsObjectValue, Object, ToNapiValue,
+    ValueType,
+};
 use napi::{Error as NapiError, JsValue, Unknown};
 use napi_derive::napi;
+use ottavino_gc_arena::{Collect, Collection};
 
 use ottavino::Lua as OLua;
 
@@ -13,19 +19,92 @@ pub struct GcMetrics {
     pub allocation_debt: f64,
 }
 
+/// Global variable handle for interacting with Lua globals (`_ENV`).
+#[napi]
+pub struct Globals {
+    inner: Arc<Mutex<OLua>>,
+}
+
+#[napi]
+impl Globals {
+    #[napi(constructor)]
+    pub fn new() -> Self {
+        Globals {
+            inner: Arc::new(Mutex::new(OLua::full())),
+        }
+    }
+
+    /// Get a global variable from the Lua environment by name.
+    #[napi]
+    pub fn get<'js>(
+        &self,
+        env: &'js Env,
+        name: String,
+    ) -> Result<Unknown<'js>, NapiError> {
+        let mut inner = match self.inner.lock() {
+            Ok(guard) => guard,
+            Err(e) => return Err(NapiError::from_reason(format!("Mutex lock error: {e}"))),
+        };
+        let mut get_result: Result<Unknown<'js>, NapiError> = ().into_unknown(env);
+        inner.enter(|ctx| {
+            let key = ctx.intern(name.as_bytes());
+            let val = ctx.globals().get_raw(ottavino::Value::String(key));
+            get_result = ottavino_value_to_js(env, ctx, val);
+        });
+
+        get_result
+    }
+
+    /// Set a global variable in the Lua environment by name.
+    #[napi]
+    pub fn set<'js>(
+        &self,
+        env: &'js Env,
+        name: String,
+        value: Unknown<'js>,
+    ) -> Result<(), NapiError> {
+        let mut inner = match self.inner.lock() {
+            Ok(guard) => guard,
+            Err(e) => return Err(NapiError::from_reason(format!("Mutex lock error: {e}"))),
+        };
+        let mut set_result: Result<(), NapiError> = Ok(());
+        inner.enter(|ctx| match js_to_ottavino_value(env, ctx, value) {
+            Ok(lua_val) => {
+                let key = ctx.intern(name.as_bytes());
+                if let Err(e) = ctx.globals().set(ctx, key, lua_val) {
+                    set_result = Err(NapiError::from_reason(e.to_string()));
+                }
+            }
+            Err(e) => {
+                set_result = Err(e);
+            }
+        });
+
+        set_result
+    }
+}
+
 /// A Lua execution environment exported to JavaScript/TypeScript via NAPI.
 #[napi]
 pub struct Lua {
-    inner: OLua,
+    inner: Arc<Mutex<OLua>>,
 }
 
 #[napi]
 impl Lua {
+    /// Returns the `Globals` handle for interacting with global variables (`_ENV`).
+    #[napi]
+    pub fn globals(&self) -> Globals {
+        Globals {
+            inner: Arc::clone(&self.inner),
+        }
+    }
+
     /// Create a new `Lua` instance with the full stdlib loaded.
     #[napi(constructor)]
     pub fn new() -> Self {
         Lua {
-            inner: OLua::full(),
+            inner: Arc::new(Mutex::new(OLua::full())),
         }
     }
 
@@ -33,7 +112,7 @@ impl Lua {
     #[napi(factory)]
     pub fn empty() -> Self {
         Lua {
-            inner: OLua::empty(),
+            inner: Arc::new(Mutex::new(OLua::empty())),
         }
     }
 
@@ -41,7 +120,7 @@ impl Lua {
     #[napi(factory)]
     pub fn core() -> Self {
         Lua {
-            inner: OLua::core(),
+            inner: Arc::new(Mutex::new(OLua::core())),
         }
     }
 
@@ -49,51 +128,79 @@ impl Lua {
     #[napi(factory)]
     pub fn full() -> Self {
         Lua {
-            inner: OLua::full(),
+            inner: Arc::new(Mutex::new(OLua::full())),
         }
     }
 
     /// Load the core stdlib (base, coroutine, math, string, table).
     #[napi]
-    pub fn load_core(&mut self) {
-        self.inner.load_core();
+    pub fn load_core(&self) -> Result<(), NapiError> {
+        let mut inner = match self.inner.lock() {
+            Ok(guard) => guard,
+            Err(e) => return Err(NapiError::from_reason(format!("Mutex lock error: {e}"))),
+        };
+        inner.load_core();
+        Ok(())
     }
 
     /// Load the I/O stdlib.
     #[napi]
-    pub fn load_io(&mut self) {
-        self.inner.load_io();
+    pub fn load_io(&self) -> Result<(), NapiError> {
+        let mut inner = match self.inner.lock() {
+            Ok(guard) => guard,
+            Err(e) => return Err(NapiError::from_reason(format!("Mutex lock error: {e}"))),
+        };
+        inner.load_io();
+        Ok(())
     }
 
     /// Size of memory used by this Lua context, in bytes.
     #[napi]
-    pub fn total_memory(&self) -> f64 {
-        self.inner.total_memory() as f64
+    pub fn total_memory(&self) -> Result<f64, NapiError> {
+        let inner = match self.inner.lock() {
+            Ok(guard) => guard,
+            Err(e) => return Err(NapiError::from_reason(format!("Mutex lock error: {e}"))),
+        };
+        Ok(inner.total_memory() as f64)
     }
 
     /// Run garbage collection cycle.
     #[napi]
-    pub fn gc_collect(&mut self) {
-        self.inner.gc_collect();
+    pub fn gc_collect(&self) -> Result<(), NapiError> {
+        let mut inner = match self.inner.lock() {
+            Ok(guard) => guard,
+            Err(e) => return Err(NapiError::from_reason(format!("Mutex lock error: {e}"))),
+        };
+        inner.gc_collect();
+        Ok(())
     }
 
     /// Get garbage collector metrics.
     #[napi]
-    pub fn gc_metrics(&self) -> GcMetrics {
-        let m = self.inner.gc_metrics();
-        GcMetrics {
+    pub fn gc_metrics(&self) -> Result<GcMetrics, NapiError> {
+        let inner = match self.inner.lock() {
+            Ok(guard) => guard,
+            Err(e) => return Err(NapiError::from_reason(format!("Mutex lock error: {e}"))),
+        };
+        let m = inner.gc_metrics();
+        Ok(GcMetrics {
             total_allocation: m.total_allocation() as f64,
             allocation_debt: m.allocation_debt(),
-        }
+        })
     }
 
     /// Evaluate Lua code string and return the result as a JavaScript value.
     #[napi]
-    pub fn eval<'js>(&mut self, env: &'js Env, code: String) -> Result<Unknown<'js>, NapiError> {
+    pub fn eval<'js>(&self, env: &'js Env, code: String) -> Result<Unknown<'js>, NapiError> {
+        let mut inner = match self.inner.lock() {
+            Ok(guard) => guard,
+            Err(e) => return Err(NapiError::from_reason(format!("Mutex lock error: {e}"))),
+        };
+
         let mut stashed_opt = None;
         let mut compile_err = None;
 
-        self.inner.enter(
+        inner.enter(
             |ctx| match ottavino::Closure::load(ctx, Some("eval"), code.as_bytes()) {
                 Ok(closure) => {
                     let executor = ottavino::Executor::start(ctx, closure.into(), ());
@@ -111,14 +218,14 @@ impl Lua {
 
         let stashed = stashed_opt.unwrap();
 
-        if let Err(e) = self.inner.finish(&stashed) {
+        if let Err(e) = inner.finish(&stashed) {
             return Err(NapiError::from_reason(format!("Lua finish error: {e}")));
         }
 
         let mut eval_result: Result<Unknown<'js>, NapiError> =
             Err(NapiError::from_reason("Execution failed"));
 
-        self.inner.enter(
+        inner.enter(
             |ctx| match ctx.fetch(&stashed).take_result::<ottavino::Value>(ctx) {
                 Ok(Ok(val)) => {
                     eval_result = ottavino_value_to_js(env, ctx, val);
@@ -140,43 +247,22 @@ impl Lua {
     /// Get a global variable from Lua environment by name.
     #[napi]
     pub fn get_global<'js>(
-        &mut self,
+        &self,
         env: &'js Env,
         name: String,
     ) -> Result<Unknown<'js>, NapiError> {
-        let mut get_result: Result<Unknown<'js>, NapiError> = ().into_unknown(env);
-        self.inner.enter(|ctx| {
-            let key = ctx.intern(name.as_bytes());
-            let val = ctx.globals().get_raw(ottavino::Value::String(key));
-            get_result = ottavino_value_to_js(env, ctx, val);
-        });
-
-        get_result
+        self.globals().get(env, name)
     }
 
     /// Set a global variable in Lua environment by name.
     #[napi]
     pub fn set_global<'js>(
-        &mut self,
+        &self,
         env: &'js Env,
         name: String,
         value: Unknown<'js>,
     ) -> Result<(), NapiError> {
-        let mut set_result: Result<(), NapiError> = Ok(());
-        self.inner
-            .enter(|ctx| match js_to_ottavino_value(env, ctx, value) {
-                Ok(lua_val) => {
-                    let key = ctx.intern(name.as_bytes());
-                    if let Err(e) = ctx.globals().set(ctx, key, lua_val) {
-                        set_result = Err(NapiError::from_reason(e.to_string()));
-                    }
-                }
-                Err(e) => {
-                    set_result = Err(e);
-                }
-            });
-
-        set_result
+        self.globals().set(env, name, value)
     }
 }
 
@@ -251,6 +337,109 @@ fn js_to_ottavino_value<'gc>(
             let s = unsafe { String::from_napi_value(env.raw(), js_val.raw())? };
             let interned = ctx.intern(s.as_bytes());
             Ok(ottavino::Value::String(interned))
+        }
+        ValueType::Function => {
+            let js_fn = unsafe { JsFunction::from_napi_value(env.raw(), js_val.raw())? };
+            let fn_ref = js_fn.create_ref()?;
+
+            struct JsCallbackRoot {
+                fn_ref: FunctionRef<Unknown<'static>, Unknown<'static>>,
+            }
+
+            unsafe impl Collect for JsCallbackRoot {
+                fn needs_trace() -> bool {
+                    false
+                }
+                fn trace(&self, _cc: &Collection) {}
+            }
+
+            let raw_env = env.raw();
+            let cb = ottavino::Callback::from_fn_with(
+                &ctx,
+                JsCallbackRoot { fn_ref },
+                move |root, ctx, _exec, mut stack| {
+                    let env = Env::from_raw(raw_env);
+                    let js_fn = match root.fn_ref.borrow_back(&env) {
+                        Ok(f) => f,
+                        Err(e) => return Err(ottavino::Error::from(anyhow::Error::msg(e.to_string()))),
+                    };
+
+                    let stack_len = stack.len();
+                    let mut js_args = Vec::with_capacity(stack_len);
+                    for i in 0..stack_len {
+                        let lua_val = stack.get(i);
+                        let js_arg = match ottavino_value_to_js(&env, ctx, lua_val) {
+                            Ok(arg) => arg,
+                            Err(e) => return Err(ottavino::Error::from(anyhow::Error::msg(e.to_string()))),
+                        };
+                        js_args.push(js_arg);
+                    }
+
+                    let mut raw_args: Vec<napi::sys::napi_value> = js_args.iter().map(|v| v.raw()).collect();
+                    let mut undefined_raw = std::ptr::null_mut();
+                    let mut result_raw = std::ptr::null_mut();
+                    let js_res: Unknown = unsafe {
+                        napi::sys::napi_get_undefined(env.raw(), &mut undefined_raw);
+                        let status = napi::sys::napi_call_function(
+                            env.raw(),
+                            undefined_raw,
+                            js_fn.raw(),
+                            raw_args.len(),
+                            raw_args.as_mut_ptr(),
+                            &mut result_raw,
+                        );
+                        if status != napi::sys::Status::napi_ok {
+                            let mut err_val = std::ptr::null_mut();
+                            napi::sys::napi_get_and_clear_last_exception(env.raw(), &mut err_val);
+                            let err_msg = if !err_val.is_null() {
+                                if let Ok(js_err) = Unknown::from_napi_value(env.raw(), err_val) {
+                                    if let Ok(js_obj) = Object::from_napi_value(env.raw(), js_err.raw()) {
+                                        if let Ok(msg) = js_obj.get_named_property::<String>("message") {
+                                            msg
+                                        } else if let Ok(s) = js_err.coerce_to_string() {
+                                            if let Ok(u) = s.into_utf8() {
+                                                u.as_str().map(|str| str.to_string()).unwrap_or_else(|_| "JS callback failed".to_string())
+                                            } else {
+                                                "JS callback failed".to_string()
+                                            }
+                                        } else {
+                                            "JS callback failed".to_string()
+                                        }
+                                    } else if let Ok(s) = js_err.coerce_to_string() {
+                                        if let Ok(u) = s.into_utf8() {
+                                            u.as_str().map(|str| str.to_string()).unwrap_or_else(|_| "JS callback failed".to_string())
+                                        } else {
+                                            "JS callback failed".to_string()
+                                        }
+                                    } else {
+                                        "JS callback failed".to_string()
+                                    }
+                                } else {
+                                    "JS callback failed".to_string()
+                                }
+                            } else {
+                                "JS callback failed".to_string()
+                            };
+                            return Err(ottavino::Error::from(anyhow::Error::msg(err_msg)));
+                        }
+                        match Unknown::from_napi_value(env.raw(), result_raw) {
+                            Ok(res) => res,
+                            Err(e) => return Err(ottavino::Error::from(anyhow::Error::msg(e.to_string()))),
+                        }
+                    };
+
+                    let lua_res = match js_to_ottavino_value(&env, ctx, js_res) {
+                        Ok(val) => val,
+                        Err(e) => return Err(ottavino::Error::from(anyhow::Error::msg(e.to_string()))),
+                    };
+
+                    stack.replace(ctx, lua_res);
+
+                    Ok(ottavino::CallbackReturn::Return)
+                },
+            );
+
+            Ok(ottavino::Value::Function(ottavino::Function::Callback(cb)))
         }
         ValueType::Object => {
             if js_val.is_array()? {

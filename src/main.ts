@@ -1,6 +1,6 @@
-import { Lua } from "../dist/index.js";
+import { Globals, Lua } from "../dist/index.js";
 
-export { Lua };
+export { Globals, Lua };
 
 export const main = () => {
   const lua = Lua.full();

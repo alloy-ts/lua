@@ -43,12 +43,15 @@ const pcallResult = lua.eval(`
 
 console.log("Lua pcall result handled inside Lua script:", pcallResult);
 
-// 4. Explanation regarding JS Callbacks / registerCallback:
-console.log("\n--- 4. Note on JS Callbacks (registerCallback) ---");
-console.log(
-  "Host JS callbacks (e.g. `registerCallback`) are currently unexposed in `@alloy-ts/lua`.",
-);
-console.log(
-  "When host callbacks are supported in the future, exceptions in JS callbacks will be caught",
-);
-console.log("and translated into Lua runtime errors (or vice versa across the NAPI boundary).");
+// 4. Handling exceptions thrown from JS functions registered in Lua
+console.log("\n--- 4. Exceptions in Registered JS Functions ---");
+lua.globals().set("failingJsFunction", () => {
+  throw new Error("Exception thrown inside JavaScript callback!");
+});
+
+try {
+  lua.eval("failingJsFunction()");
+} catch (err) {
+  console.log("Caught JS callback exception translated to Lua error:");
+  console.log("Message:", (err as Error).message);
+}
