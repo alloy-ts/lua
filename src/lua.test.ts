@@ -12,16 +12,16 @@ describe("Lua constructors", () => {
     expect(lua).toBeDefined();
     expect(typeof lua.eval).toBe("function");
     expect(lua.eval("return 1 + 1")).toBe(2);
-    // A default instance ships with the I/O library.
-    expect(lua.eval("return io ~= nil")).toBe(true);
+    // A default instance ships with the I/O library (e.g. `print`).
+    expect(lua.eval("return print ~= nil")).toBe(true);
   });
 
   test("Lua.full() exposes the I/O library", () => {
-    expect(Lua.full().eval("return io ~= nil")).toBe(true);
+    expect(Lua.full().eval("return print ~= nil")).toBe(true);
   });
 
   test("Lua.core() omits the I/O library", () => {
-    expect(Lua.core().eval("return io ~= nil")).toBe(false);
+    expect(Lua.core().eval("return print ~= nil")).toBe(false);
   });
 
   test("Lua.empty() has no standard library", () => {
@@ -155,7 +155,7 @@ describe("standard-library loading", () => {
     const lua = Lua.empty();
     lua.loadCore();
     lua.loadIo();
-    expect(lua.eval("return io ~= nil")).toBe(true);
+    expect(lua.eval("return print ~= nil")).toBe(true);
   });
 });
 
