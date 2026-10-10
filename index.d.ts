@@ -7,7 +7,7 @@
  * flavor napi-rs can build is listed, because `NAPI_RS_NATIVE_LIBRARY_PATH`
  * can point the loader at a WASI artifact this package does not build itself.
  */
-export declare const __napiBindingTarget: 'native' | 'wasm32-wasi' | 'wasm32-wasip1'
+export declare const __napiBindingTarget: "native" | "wasm32-wasi" | "wasm32-wasip1";
 
 /** A bridge object handed to Lua callbacks or interactions. */
 export declare class Context {}
@@ -15,9 +15,9 @@ export declare class Context {}
 /** An `enum@Error` that is not bound to the GC context. Safe to hand to JS. */
 export declare class ExternError {
   /** Human-readable message. */
-  message(): string
+  message(): string;
   /** `"lua"` if the error carries a Lua value, or `"runtime"` if it carries a Rust error. */
-  kind(): string
+  kind(): string;
 }
 
 /** Opaque, erased-lifetime handle to an `ottavino::Function<'gc>`. */
@@ -26,37 +26,39 @@ export declare class Function {}
 /** A Lua execution environment. Top-level `ottavino` type; create one, then execute code. */
 export declare class Lua {
   /** Create a `Lua` instance with no parts of the stdlib loaded. */
-  static empty(): Lua
+  static empty(): Lua;
   /** Create a `Lua` instance with the core (non-I/O) stdlib loaded. */
-  static core(): Lua
+  static core(): Lua;
   /** Create a `Lua` instance with the full stdlib (including I/O) loaded. */
-  static full(): Lua
+  static full(): Lua;
   /** Load the core parts of the stdlib that do not allow performing any I/O. */
-  loadCore(): void
+  loadCore(): void;
   /** Load the parts of the stdlib that allow I/O. */
-  loadIo(): void
+  loadIo(): void;
   /** Size of all memory used by this Lua context, in bytes. */
-  totalMemory(): number
+  totalMemory(): number;
   /** Finish the current collection cycle completely. */
-  gcCollect(): void
+  gcCollect(): void;
   /** Snapshot of the garbage collector metrics. */
-  gcMetrics(): GcMetrics
+  gcMetrics(): GcMetrics;
+  /** Set a global string variable in the Lua environment. */
+  setGlobal(key: string, value: string): void;
   /** Compile and evaluate Lua code, returning the string representation of the result value. */
-  eval(code: string): NapiResult<string>
+  eval(code: string): string;
 }
 
 /** A shareable, dynamically typed wrapper around a Rust error, safe to hand to JS. */
 export declare class RuntimeError {
   /** Create a runtime error from a message string. */
-  static fromMessage(message: string): RuntimeError
+  static fromMessage(message: string): RuntimeError;
   /** Human-readable message (the `Display` of the underlying error). */
-  message(): string
+  message(): string;
 }
 
 /** Snapshot of `ottavino_gc_arena::metrics::Metrics`. */
 export interface GcMetrics {
   /** Total bytes tracked by the allocator (mirrors `Lua::total_memory`). */
-  totalAllocation: number
+  totalAllocation: number;
   /** Current allocation debt; when it exceeds a small constant, `enter` triggers a collection. */
-  allocationDebt: number
+  allocationDebt: number;
 }

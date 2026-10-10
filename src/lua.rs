@@ -1,5 +1,3 @@
-use napi::bindgen_prelude::Env;
-use napi::Result as NapiResult;
 use napi_derive::napi;
 use ottavino::{
     Closure as OClosure, Context as OContext, Executor as OExecutor, Lua as OLua,
@@ -80,9 +78,19 @@ impl Lua {
         }
     }
 
+    /// Set a global string variable in the Lua environment.
+    #[napi]
+    pub fn set_global(&mut self, key: String, value: String) {
+        self.inner.enter(|ctx| {
+            let key_str = ctx.intern(key.as_bytes());
+            let val_str = ctx.intern(value.as_bytes());
+            ctx.globals().set(ctx, key_str, val_str).unwrap();
+        });
+    }
+
     /// Compile and evaluate Lua code, returning the string representation of the result value.
     #[napi]
-    pub fn eval(&mut self, env: Env, code: String) -> NapiResult<String> {
+    pub fn eval(&mut self, code: String) -> napi::Result<String> {
         let mut stashed_executor = None;
         let mut parse_err = None;
 
@@ -130,7 +138,6 @@ impl Lua {
             return Err(napi::Error::new(napi::Status::GenericFailure, e));
         }
 
-        let _ = env;
         Ok(output)
     }
 }
