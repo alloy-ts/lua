@@ -24,6 +24,7 @@ A guide covering Lua 5.4 language basics, the standard library, and the features
   - [Granular Standard Library Sandboxing](#granular-standard-library-sandboxing)
   - [Memory Allocation Tracking & GC Arena Metrics](#memory-allocation-tracking--gc-arena-metrics)
   - [Zero-C-Dependency NAPI & WASM/WASI Readiness](#zero-c-dependency-napi--wasmwasi-readiness)
+- [4. WASI p3 & Sandbox Compatibility (`Lua.core()` vs `Lua.full()`)](#4-wasi-p3--sandbox-compatibility-luacore-vs-luafull)
 
 ---
 
@@ -241,3 +242,17 @@ Ottavino exposes total memory consumption and garbage collector metrics directly
 ### Zero-C-Dependency NAPI & WASM/WASI Readiness
 
 - Because there are no external C libraries or native C headers required, cross-compiling to WebAssembly (`wasm32-wasip1`, WASI Preview 3, browser builds via `emnapi`) works without installing C cross-compilers or system headers.
+
+---
+
+## 4. WASI p3 & Sandbox Compatibility (`Lua.core()` vs `Lua.full()`)
+
+### `Lua.core()` (and `Lua.empty()`) in WASI p3 Environments
+
+- **Zero I/O Syscall Dependencies**: `Lua.core()` contains only pure in-memory compute modules (`base`, `coroutine`, `math`, `string`, `table`).
+- **Fully Compliant with Strict WASI p3 Sandboxes**: Because `Lua.core()` makes zero filesystem or OS handle requests, it runs flawlessly inside strict WASI Preview 3 / WASI Component Model sandboxes where no filesystem (`wasi:filesystem`) or CLI capabilities (`wasi:cli`) are granted.
+
+### `Lua.full()` in WASI p3 Environments
+
+- **Requires WASI I/O Capabilities**: `Lua.full()` includes the `io` library (`io.open`, `io.read`, `io.write`). In WASI p3 / Component Model runtimes, using `Lua.full()` or invoking `loadIo()` requires the host runtime to grant WASI I/O imports (`wasi:cli/stdout`, `wasi:filesystem/preopens`).
+- **Recommended Best Practice**: For untrusted user scripts or capability-restricted WASI Preview 3 deployments, use `Lua.core()` or `Lua.empty()` to guarantee isolated execution.

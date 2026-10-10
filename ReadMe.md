@@ -15,7 +15,7 @@ To support embedded Lua in TypeScript/JavaScript via NAPI:
 
 ## Documentation
 
-- **[Language & Standard Library Guide](docs/lang-guide.md)**: Lua 5.4 basics, standard library overview (`math`, `string`, `table`, `coroutine`, `io`), and what the pure-Rust Ottavino engine provides.
+- **[Language & Standard Library Guide](docs/lang-guide.md)**: Lua 5.4 basics, standard library overview (`math`, `string`, `table`, `coroutine`, `io`), WASI p3 sandboxing, and what the pure-Rust Ottavino engine provides.
 - **[API Reference](docs/api.md)**: Full API documentation for the exported `Lua` class, constructors, methods, GC metrics interface, and JS-to-Lua type mapping rules.
 
 ## Examples & Usage
@@ -211,7 +211,9 @@ Because `ottavino` is a pure Rust Lua VM, cross-compiling to WebAssembly does no
 
 ### Browser & WASI p3 Support with emnapi / emscripten
 
-- **WASI (Preview 1 / WASI p3)**: The `wasm32-wasip1` / `wasm32-wasip1-threads` targets produce `.wasm` binaries and `.wasi.cjs` loaders that run in Node.js and WASI runtimes. For WASI Preview 2/3 component runtimes, standard WASI p1-to-p2/p3 adapters wrap the generated WebAssembly binary without requiring WIT definitions.
+- **WASI (Preview 1 / WASI p3)**: The `wasm32-wasip1` / `wasm32-wasip1-threads` targets produce `.wasm` binaries and `.wasi.cjs` loaders that run in Node.js and WASI runtimes.
+  - **`Lua.core()`**: Contains zero filesystem/I/O syscall dependencies and runs safely inside restricted WASI Preview 3 sandboxes without requiring filesystem capabilities (`wasi:filesystem`).
+  - **`Lua.full()`**: Includes the `io` library and requires host permissions for WASI I/O capabilities (`wasi:cli/stdout`, `wasi:filesystem/preopens`).
 - **Browsers & emnapi**: Dev dependencies include `@emnapi/core`, `@emnapi/runtime`, and `emnapi`. When building with Emscripten (`wasm32-unknown-emscripten`) or linking via `emnapi`, Node-API host functions (`env.napi_*`) are mapped directly to browser JS runtimes, enabling embedded Lua execution in WebAssembly inside modern web browsers.
 
 ## API Reference

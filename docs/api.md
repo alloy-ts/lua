@@ -27,6 +27,7 @@ Complete documentation for the exported NAPI bindings and TypeScript/JavaScript 
 - [Constants](#constants)
   - [`__napiBindingTarget`](#__napibindingtarget)
 - [Type Mapping (JS/TS <-> Lua)](#type-mapping-jsts---lua)
+- [WASI p3 Sandbox Compatibility](#wasi-p3-sandbox-compatibility)
 
 ---
 
@@ -55,7 +56,7 @@ const lua = Lua.full();
 #### `Lua.core()`
 
 - **Returns**: `Lua`
-- Static factory method that instantiates a Lua VM with core standard libraries pre-loaded (`base`, `coroutine`, `math`, `string`, `table`), excluding I/O.
+- Static factory method that instantiates a Lua VM with core standard libraries pre-loaded (`base`, `coroutine`, `math`, `string`, `table`), excluding I/O. Safe for strict WASI p3 sandboxes without I/O rights.
 
 ```typescript
 const lua = Lua.core();
@@ -224,3 +225,10 @@ NAPI performs automatic bidirectional mapping between JavaScript/TypeScript type
 | `null` / `undefined`          | `nil`                | Represents unassigned or missing values in Lua.                   |
 | `Array` (e.g. `[10, 20]`)     | `table` (sequential) | 1-indexed Lua array table.                                        |
 | `Object` (e.g. `{ a: 1 }`)    | `table` (dictionary) | Key-value dictionary Lua table.                                   |
+
+---
+
+## WASI p3 Sandbox Compatibility
+
+- **`Lua.core()` / `Lua.empty()`**: Fully supported in strict WASI Preview 3 sandboxes without requiring filesystem or CLI capabilities (`wasi:filesystem` / `wasi:cli`).
+- **`Lua.full()`**: Requires host runtime permissions for WASI I/O capabilities (`wasi:cli/stdout`, `wasi:filesystem/preopens`).
