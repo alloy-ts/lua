@@ -103,13 +103,34 @@ The `@alloy-ts/lua` NAPI layer exposes the Ottavino VM to TypeScript:
 +-------------------------------------------------------+
 ```
 
-| NAPI Method / Type                            | Description                                                                |
-| --------------------------------------------- | -------------------------------------------------------------------------- |
-| `Lua.full()`, `core()`, `empty()`             | VM state constructors with configurable stdlib loading.                    |
-| `eval(code)`                                  | Compiles source into a `Closure<'gc>` and steps `Executor` to completion.  |
-| `setGlobal(name, val)`                        | Marshals JS values/objects/arrays into Ottavino `Table` and `Value` types. |
-| `getGlobal(name)`                             | Retrieves global `Value` and converts it to JS primitives or objects.      |
-| `totalMemory()`, `gcCollect()`, `gcMetrics()` | Exposes `gc-arena` memory tracking and manual GC invocation to JS.         |
+| NAPI Method / Type                            | Status      | Description                                                                |
+| --------------------------------------------- | ----------- | -------------------------------------------------------------------------- |
+| `Lua.full()`, `core()`, `empty()`             | Implemented | VM state constructors with configurable stdlib loading.                    |
+| `eval(code)`                                  | Implemented | Compiles source into a `Closure<'gc>` and steps `Executor` to completion.  |
+| `setGlobal(name, val)`                        | Implemented | Marshals JS values/objects/arrays into Ottavino `Table` and `Value` types. |
+| `getGlobal(name)`                             | Implemented | Retrieves global `Value` and converts it to JS primitives or objects.      |
+| `totalMemory()`, `gcCollect()`, `gcMetrics()` | Implemented | Exposes `gc-arena` memory tracking and manual GC invocation to JS.         |
+
+---
+
+## 7. Advanced Ottavino Capabilities & NAPI Surface Roadmap
+
+Ottavino provides rich underlying Rust APIs that map directly to the NAPI layer:
+
+### 7.1 Async / Fuel Stepping Execution (`Executor::step`)
+
+- **Ottavino API:** `Executor::start(ctx, function, args)` and `executor.step(ctx, &mut fuel)`.
+- **NAPI Surface:** Exposing `LuaExecutor` handles to JavaScript allowing `executor.step(fuel: number): boolean` calls. JS callers drive execution incrementally via `setInterval` or `requestAnimationFrame` and can cancel execution anytime by dropping the handle.
+
+### 7.2 Host Callback Registration (`Callback::from_fn`)
+
+- **Ottavino API:** `Callback::from_fn(&ctx, |ctx, exec, stack| { ... })`.
+- **NAPI Surface:** Binding JS host functions (`registerCallback(name, jsFn)`) as `ottavino::Callback` instances in Lua tables, allowing Lua code to trigger host JS/TS handlers directly.
+
+### 7.3 Coroutine & Thread API (`Thread<'gc>`)
+
+- **Ottavino API:** `Thread<'gc>`, `coroutine.yieldto`, and `coroutine.continue`.
+- **NAPI Surface:** Exposing `Thread` handles to JavaScript for inspecting thread status (`running`, `suspended`, `dead`) and triggering explicit thread resumption or yield switching from host JS code.
 
 ---
 
