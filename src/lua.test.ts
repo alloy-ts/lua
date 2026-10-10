@@ -193,10 +193,19 @@ describe("memory and garbage collection", () => {
 });
 
 describe("calling JS functions from Lua", () => {
-  test("setGlobal allows JS functions to be called from Lua", () => {
+  test("setGlobal / globals().set() allows JS functions to be called from Lua", () => {
     const lua = Lua.full();
-    lua.setGlobal("add", (a: number, b: number) => a + b);
+    lua.globals().set("add", (a: number, b: number) => a + b);
     expect(lua.eval("return add(10, 20)")).toBe(30);
+  });
+
+  test("registerCallback allows registering JS callbacks in Lua", () => {
+    const lua = Lua.full();
+    lua.registerCallback("multiply", (x: number, y: number) => x * y);
+    expect(lua.eval("return multiply(6, 7)")).toBe(42);
+
+    lua.globals().registerCallback("concat", (s1: string, s2: string) => s1 + s2);
+    expect(lua.eval("return concat('foo', 'bar')")).toBe("foobar");
   });
 
   test("JS functions can receive and return complex types", () => {

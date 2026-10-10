@@ -63,6 +63,17 @@ impl Globals {
 
         set_result
     }
+
+    /// Register a JavaScript function as an Ottavino Callback in the global environment.
+    #[napi]
+    pub fn register_callback<'js>(
+        &mut self,
+        env: &'js Env,
+        name: String,
+        callback: Unknown<'js>,
+    ) -> Result<(), NapiError> {
+        self.set(env, name, callback)
+    }
 }
 
 /// A Lua execution environment exported to JavaScript/TypeScript via NAPI.
@@ -216,6 +227,17 @@ impl Lua {
         value: Unknown<'js>,
     ) -> Result<(), NapiError> {
         self.globals().set(env, name, value)
+    }
+
+    /// Register a JavaScript function as an Ottavino Callback in the global environment.
+    #[napi]
+    pub fn register_callback<'js>(
+        &mut self,
+        env: &'js Env,
+        name: String,
+        callback: Unknown<'js>,
+    ) -> Result<(), NapiError> {
+        self.globals().register_callback(env, name, callback)
     }
 }
 

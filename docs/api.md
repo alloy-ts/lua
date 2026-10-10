@@ -33,6 +33,10 @@ The `@alloy-ts/lua` library wraps the Ottavino Lua 5.4 VM using NAPI-RS.
   Returns the `Globals` handle for interacting with global variables (`_ENV` / `ctx.globals()`), mirroring Ottavino's Rust API.
   - **`globals.get(name: string): unknown`**: Retrieves a global variable from the Lua environment.
   - **`globals.set(name: string, value: unknown): void`**: Binds a global variable in the Lua environment. Converts primitives, JS objects/arrays to Lua tables, and JS functions to callable Ottavino `Callback`s.
+  * **`globals.registerCallback(name: string, callback: Function): void`**: Registers a JavaScript function as an Ottavino `Callback` in the global environment.
+
+- **`lua.registerCallback(name: string, callback: Function): void`**
+  Convenience alias for `lua.globals().registerCallback(name, callback)`.
 
 - **`lua.setGlobal(name: string, value: unknown): void`**
   Convenience alias for `lua.globals().set(name, value)`.

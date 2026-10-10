@@ -66,6 +66,7 @@ lua.gcCollect();
 - `lua.eval(code: string): unknown`: Compiles and executes the given Lua code
   string, returning the result as a JavaScript value.
 - `lua.globals(): Globals`: Returns the global variable manager (`Globals` handle with `.get(name)` and `.set(name, value)` methods, aligning with Ottavino's `ctx.globals()`).
+- `lua.registerCallback(name: string, callback: Function): void`: Registers a JS function as a callable Ottavino `Callback` in the global scope.
 - `lua.setGlobal(name: string, value: unknown): void`: Alias for `lua.globals().set(name, value)`.
 - `lua.getGlobal(name: string): unknown`: Alias for `lua.globals().get(name)`.
 - `lua.loadCore(): void`: Loads core standard libraries into an existing Lua
