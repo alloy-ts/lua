@@ -1,9 +1,11 @@
-use napi::bindgen_prelude::{Env, Unknown};
+use napi::bindgen_prelude::{Env, Unknown, ValueType};
+use napi::{JsNumber, JsString, JsValue};
 use napi::Error as NapiError;
 use napi_derive::napi;
 use ottavino::{
     Closure,
     Executor,
+    IntoValue,
     Lua as OLua,
     Value as OValue,
 };
@@ -88,6 +90,85 @@ impl Lua {
         Lua {
             inner: OLua::empty(),
         }
+    }
+
+    /// Set a global variable or constant in the Lua environment from a JS primitive value.
+    #[napi(js_name = "setGlobal")]
+    pub fn set_global(&mut self, env: Env, name: String, value: Unknown) -> napi::Result<()> {
+        let value_type = value.get_type()?;
+        let mut set_err = None;
+
+        self.inner.enter(|ctx| {
+            let globals = ctx.globals();
+
+            let lua_val: OValue = match value_type {
+                ValueType::Undefined | ValueType::Null => OValue::Nil,
+                ValueType::Boolean => {
+                    let mut b = false;
+                    let status = unsafe { napi::sys::napi_get_value_bool(env.raw(), value.raw(), &mut b) };
+                    if status != napi::sys::Status::napi_ok {
+                        set_err = Some(NapiError::from_reason("Failed to get boolean value"));
+                        return;
+                    }
+                    OValue::Boolean(b)
+                }
+                ValueType::Number => {
+                    let js_num: JsNumber = match unsafe { value.cast::<JsNumber>() } {
+                        Ok(n) => n,
+                        Err(e) => {
+                            set_err = Some(e);
+                            return;
+                        }
+                    };
+                    let num: f64 = match js_num.get_double() {
+                        Ok(v) => v,
+                        Err(e) => {
+                            set_err = Some(e);
+                            return;
+                        }
+                    };
+                    if num.fract() == 0.0 && num >= (i64::MIN as f64) && num <= (i64::MAX as f64) {
+                        OValue::Integer(num as i64)
+                    } else {
+                        OValue::Number(num)
+                    }
+                }
+                ValueType::String => {
+                    let js_str: JsString = match unsafe { value.cast::<JsString>() } {
+                        Ok(s) => s,
+                        Err(e) => {
+                            set_err = Some(e);
+                            return;
+                        }
+                    };
+                    let utf8 = match js_str.into_utf8() {
+                        Ok(s) => s,
+                        Err(e) => {
+                            set_err = Some(e);
+                            return;
+                        }
+                    };
+                    let str_bytes = utf8.as_slice();
+                    OValue::String(ctx.intern(str_bytes))
+                }
+                _ => {
+                    set_err = Some(NapiError::from_reason("Unsupported primitive type for setGlobal"));
+                    return;
+                }
+            };
+
+            let name_key = match ctx.intern(name.as_bytes()).into_value(ctx) {
+                OValue::String(s) => s,
+                _ => unreachable!(),
+            };
+            let _ = globals.set(ctx, name_key, lua_val);
+        });
+
+        if let Some(err) = set_err {
+            return Err(err);
+        }
+
+        Ok(())
     }
 
     /// Evaluate a Lua script/expression string and return the result value converted to JS.
