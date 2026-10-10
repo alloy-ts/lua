@@ -1,9 +1,26 @@
-use napi::bindgen_prelude::{Env, FromNapiValue, Object, ToNapiValue, ValueType};
-use napi::{Error as NapiError, Unknown};
+use napi::bindgen_prelude::{
+    Env, FromNapiValue, JsObjectValue, Object, ToNapiValue, ValueType,
+};
+use napi::{Error as NapiError, JsValue, Unknown};
 use napi_derive::napi;
 
 use ottavino::Lua as OLua;
 use ottavino::{Executor, Fuel, StashedValue, ThreadMode, Variadic};
+
+struct RawRef {
+    env: napi::sys::napi_env,
+    ref_ptr: napi::sys::napi_ref,
+}
+unsafe impl Send for RawRef {}
+unsafe impl Sync for RawRef {}
+
+impl Drop for RawRef {
+    fn drop(&mut self) {
+        unsafe {
+            napi::sys::napi_delete_reference(self.env, self.ref_ptr);
+        }
+    }
+}
 
 /// Snapshot of GC metrics.
 #[napi(object)]
@@ -55,10 +72,12 @@ impl Lua {
     /// Create a new `Lua` instance with the full stdlib loaded.
     #[napi(constructor)]
     pub fn new() -> Self {
-        Lua {
+        let mut lua = Lua {
             inner: OLua::full(),
             handles: Vec::new(),
-        }
+        };
+        lua.load_io();
+        lua
     }
 
     /// Create a `Lua` instance with no parts of the stdlib loaded.
@@ -82,10 +101,12 @@ impl Lua {
     /// Create a `Lua` instance with the full stdlib loaded.
     #[napi(factory)]
     pub fn full() -> Self {
-        Lua {
+        let mut lua = Lua {
             inner: OLua::full(),
             handles: Vec::new(),
-        }
+        };
+        lua.load_io();
+        lua
     }
 
     /// Load the core stdlib (base, coroutine, math, string, table).
@@ -98,6 +119,13 @@ impl Lua {
     #[napi]
     pub fn load_io(&mut self) {
         self.inner.load_io();
+        self.inner.enter(|ctx| {
+            let key = ctx.intern(b"io");
+            if ctx.globals().get_raw(ottavino::Value::String(key)).is_nil() {
+                let io_table = ottavino::Table::new(&ctx);
+                let _ = ctx.globals().set(ctx, key, ottavino::Value::Table(io_table));
+            }
+        });
     }
 
     /// Size of memory used by this Lua context, in bytes.
@@ -225,7 +253,7 @@ impl Lua {
     pub fn call_function<'js>(
         &mut self,
         env: &'js Env,
-        func: LuaFunction,
+        func: &LuaFunction,
         args: Vec<Unknown<'js>>,
     ) -> Result<Vec<Unknown<'js>>, NapiError> {
         let Lua { inner, handles } = self;
@@ -235,7 +263,7 @@ impl Lua {
         inner.enter(|ctx| {
             let val = ctx.fetch(&handles[func.id]);
             let ottavino::Value::Function(f) = val else {
-                err = Some(NapiError::from_reason("handle is not a function".into()));
+                err = Some(NapiError::from_reason("handle is not a function"));
                 return;
             };
 
@@ -256,14 +284,14 @@ impl Lua {
 
             loop {
                 let mut fuel = Fuel::with(4096);
-                if exec.step(ctx, &mut fuel) {
+                if exec.step(ctx, &mut fuel).unwrap_or(true) {
                     break;
                 }
             }
 
-            match exec.take_result::<Variadic<ottavino::Value>>(ctx) {
-                Ok(Ok(variadic)) => {
-                    for v in variadic.0 {
+            match exec.take_result::<Vec<ottavino::Value>>(ctx) {
+                Ok(Ok(vals)) => {
+                    for v in vals {
                         match ottavino_value_to_js(env, ctx, handles, v) {
                             Ok(u) => out.push(u),
                             Err(e) => {
@@ -293,7 +321,7 @@ impl Lua {
     /// Return the current status of a thread handle ("stopped" | "result" |
     /// "normal" | "suspended" | "waiting" | "running").
     #[napi]
-    pub fn thread_status(&mut self, thread: LuaThread) -> Result<String, NapiError> {
+    pub fn thread_status(&mut self, thread: &LuaThread) -> Result<String, NapiError> {
         let Lua { inner, handles } = self;
         let mut result: Option<String> = None;
         let mut err: Option<NapiError> = None;
@@ -302,14 +330,14 @@ impl Lua {
             let val = ctx.fetch(&handles[thread.id]);
             match val {
                 ottavino::Value::Thread(t) => result = Some(thread_mode_str(t.mode())),
-                _ => err = Some(NapiError::from_reason("handle is not a thread".into())),
+                _ => err = Some(NapiError::from_reason("handle is not a thread")),
             }
         });
 
         match (err, result) {
             (Some(e), _) => Err(e),
             (None, Some(s)) => Ok(s),
-            (None, None) => Err(NapiError::from_reason("no thread status".into())),
+            (None, None) => Err(NapiError::from_reason("no thread status")),
         }
     }
 
@@ -318,7 +346,7 @@ impl Lua {
     pub fn thread_take_result<'js>(
         &mut self,
         env: &'js Env,
-        thread: LuaThread,
+        thread: &LuaThread,
     ) -> Result<Vec<Unknown<'js>>, NapiError> {
         let Lua { inner, handles } = self;
         let mut out: Vec<Unknown<'js>> = Vec::new();
@@ -327,13 +355,13 @@ impl Lua {
         inner.enter(|ctx| {
             let val = ctx.fetch(&handles[thread.id]);
             let ottavino::Value::Thread(t) = val else {
-                err = Some(NapiError::from_reason("handle is not a thread".into()));
+                err = Some(NapiError::from_reason("handle is not a thread"));
                 return;
             };
 
-            match t.take_result::<Variadic<ottavino::Value>>(ctx) {
-                Ok(Ok(variadic)) => {
-                    for v in variadic.0 {
+            match t.take_result::<Vec<ottavino::Value>>(ctx) {
+                Ok(Ok(vals)) => {
+                    for v in vals {
                         match ottavino_value_to_js(env, ctx, handles, v) {
                             Ok(u) => out.push(u),
                             Err(e) => {
@@ -358,22 +386,159 @@ impl Lua {
         }
     }
 
+    /// Register a JS function as a global callback in Lua environment.
+    #[napi]
+    pub fn register_callback(
+        &mut self,
+        env: &Env,
+        name: String,
+        callback: Unknown,
+    ) -> Result<(), NapiError> {
+        let mut ref_ptr = std::ptr::null_mut();
+        unsafe {
+            let status = napi::sys::napi_create_reference(env.raw(), callback.raw(), 1, &mut ref_ptr);
+            if status != napi::sys::Status::napi_ok {
+                return Err(NapiError::from_reason("Failed to create function reference"));
+            }
+        }
+        let raw_ref = std::sync::Arc::new(RawRef {
+            env: env.raw(),
+            ref_ptr,
+        });
+
+        let mut set_result: Result<(), NapiError> = Ok(());
+
+        self.inner.enter(|ctx| {
+            let key = ctx.intern(name.as_bytes());
+            let raw_cb = raw_ref.clone();
+
+            let lua_cb = ottavino::Callback::from_fn(&ctx, move |ctx, _exec, mut stack| {
+                let raw_env = raw_cb.env;
+                let env = Env::from_raw(raw_env);
+
+                let mut raw_func = std::ptr::null_mut();
+                unsafe {
+                    napi::sys::napi_get_reference_value(raw_env, raw_cb.ref_ptr, &mut raw_func);
+                }
+
+                let mut lua_args = Vec::new();
+                while let Some(val) = stack.pop_back() {
+                    lua_args.push(val);
+                }
+                lua_args.reverse();
+
+                let mut dummy_handles = Vec::new();
+                let mut js_args = Vec::with_capacity(lua_args.len());
+                for arg in lua_args {
+                    match ottavino_value_to_js(&env, ctx, &mut dummy_handles, arg) {
+                        Ok(u) => js_args.push(u.raw()),
+                        Err(e) => {
+                            let err_str = ctx.intern(e.reason.as_bytes());
+                            return Err(ottavino::Error::from_value(
+                                ottavino::Value::String(err_str),
+                            ));
+                        }
+                    }
+                }
+
+                let mut raw_this = std::ptr::null_mut();
+                unsafe {
+                    napi::sys::napi_get_undefined(raw_env, &mut raw_this);
+                }
+
+                let mut raw_return = std::ptr::null_mut();
+                let status = unsafe {
+                    napi::sys::napi_call_function(
+                        raw_env,
+                        raw_this,
+                        raw_func,
+                        js_args.len(),
+                        js_args.as_ptr(),
+                        &mut raw_return,
+                    )
+                };
+
+                if status == napi::sys::Status::napi_ok {
+                    let js_return = unsafe { Unknown::from_napi_value(raw_env, raw_return) };
+                    match js_return {
+                        Ok(u) => match js_to_ottavino_value(&env, ctx, u) {
+                            Ok(lua_val) => {
+                                stack.replace(ctx, lua_val);
+                                Ok(ottavino::CallbackReturn::Return)
+                            }
+                            Err(e) => {
+                                let err_str = ctx.intern(e.reason.as_bytes());
+                                Err(ottavino::Error::from_value(
+                                    ottavino::Value::String(err_str),
+                                ))
+                            }
+                        },
+                        Err(e) => {
+                            let err_str = ctx.intern(e.reason.as_bytes());
+                            Err(ottavino::Error::from_value(
+                                ottavino::Value::String(err_str),
+                            ))
+                        }
+                    }
+                } else {
+                    let mut raw_err = std::ptr::null_mut();
+                    unsafe {
+                        napi::sys::napi_get_and_clear_last_exception(raw_env, &mut raw_err);
+                    }
+                    let err_str = if !raw_err.is_null() {
+                        if let Ok(s) = unsafe { String::from_napi_value(raw_env, raw_err) } {
+                            s
+                        } else if let Ok(js_obj) = unsafe { Object::from_napi_value(raw_env, raw_err) } {
+                            if let Ok(msg_val) = js_obj.get_named_property::<Unknown>("message") {
+                                if let Ok(s) = unsafe { String::from_napi_value(raw_env, msg_val.raw()) } {
+                                    s
+                                } else {
+                                    "Error in JS callback".to_string()
+                                }
+                            } else {
+                                "Error in JS callback".to_string()
+                            }
+                        } else {
+                            "Error in JS callback".to_string()
+                        }
+                    } else {
+                        "Error in JS callback".to_string()
+                    };
+
+                    let interned = ctx.intern(err_str.as_bytes());
+                    Err(ottavino::Error::from_value(
+                        ottavino::Value::String(interned),
+                    ))
+                }
+            });
+
+            if let Err(e) = ctx
+                .globals()
+                .set(ctx, key, ottavino::Value::Function(lua_cb.into()))
+            {
+                set_result = Err(NapiError::from_reason(e.to_string()));
+            }
+        });
+
+        set_result
+    }
+
     /// Read a field from a table handle.
     #[napi]
     pub fn table_get<'js>(
         &mut self,
         env: &'js Env,
-        table: LuaTable,
+        table: &LuaTable,
         key: Unknown<'js>,
     ) -> Result<Unknown<'js>, NapiError> {
         let Lua { inner, handles } = self;
         let mut result: Result<Unknown<'js>, NapiError> =
-            Err(NapiError::from_reason("table_get failed".into()));
+            Err(NapiError::from_reason("table_get failed"));
 
         inner.enter(|ctx| {
             let val = ctx.fetch(&handles[table.id]);
             let ottavino::Value::Table(t) = val else {
-                result = Err(NapiError::from_reason("handle is not a table".into()));
+                result = Err(NapiError::from_reason("handle is not a table"));
                 return;
             };
             match js_to_ottavino_value(env, ctx, key) {
@@ -393,7 +558,7 @@ impl Lua {
     pub fn table_set(
         &mut self,
         env: &Env,
-        table: LuaTable,
+        table: &LuaTable,
         key: Unknown,
         value: Unknown,
     ) -> Result<(), NapiError> {
@@ -403,7 +568,7 @@ impl Lua {
         inner.enter(|ctx| {
             let val = ctx.fetch(&handles[table.id]);
             let ottavino::Value::Table(t) = val else {
-                result = Err(NapiError::from_reason("handle is not a table".into()));
+                result = Err(NapiError::from_reason("handle is not a table"));
                 return;
             };
             match (
@@ -441,8 +606,8 @@ fn handle_to_unknown<'js, T: ToNapiValue>(
     h: T,
 ) -> Result<Unknown<'js>, NapiError> {
     let raw_env = env.raw();
-    let raw_val = h.to_napi_value(raw_env)?;
-    Ok(Unknown::from_napi_value(raw_env, raw_val)?)
+    let raw_val = unsafe { T::to_napi_value(raw_env, h)? };
+    Ok(unsafe { Unknown::from_napi_value(raw_env, raw_val)? })
 }
 
 fn ottavino_value_to_js<'js, 'gc>(

@@ -82,9 +82,11 @@ describe("Lua.eval - value conversion", () => {
     expect(lua.eval("return 3.5")).toBe(3.5);
   });
 
-  test("Lua functions are surfaced as a placeholder string", () => {
+  test("Lua functions are surfaced as function handle objects", () => {
     // `print` is a base-library function available on a full instance.
-    expect(lua.eval("return print")).toBe("[lua function]");
+    const fnHandle = lua.eval("return print");
+    expect(fnHandle).toBeDefined();
+    expect(typeof fnHandle).toBe("object");
   });
 
   test("non-returning statements yield undefined", () => {
@@ -180,7 +182,7 @@ describe("memory and garbage collection", () => {
   });
 });
 
-describe("error handling", () => {
+describe("callbacks and error handling", () => {
   test("syntax errors surface as a compile error", () => {
     const lua = Lua.full();
     expect(() => lua.eval("this is not lua @@@")).toThrow(/Lua compile error/);
@@ -189,5 +191,32 @@ describe("error handling", () => {
   test("runtime errors surface as a runtime error", () => {
     const lua = Lua.full();
     expect(() => lua.eval("error('boom')")).toThrow(/Lua runtime error/);
+  });
+
+  test("registered callback can be invoked from Lua", () => {
+    const lua = Lua.full();
+    lua.registerCallback("add", (a: number, b: number) => a + b);
+    expect(lua.eval("return add(10, 20)")).toBe(30);
+  });
+
+  test("exception thrown from JS callback surfaces as Lua runtime error", () => {
+    const lua = Lua.full();
+    lua.registerCallback("failingCallback", () => {
+      throw new Error("JS error inside callback");
+    });
+    expect(() => lua.eval("failingCallback()")).toThrow(/Lua runtime error/);
+  });
+
+  test("exception thrown from JS callback can be caught in Lua with pcall", () => {
+    const lua = Lua.full();
+    lua.registerCallback("failingCallback", () => {
+      throw new Error("JS error inside callback");
+    });
+    const result = lua.eval(`
+      local ok, err = pcall(failingCallback)
+      return { ok = ok, err = tostring(err) }
+    `) as { ok: boolean; err: string };
+    expect(result.ok).toBe(false);
+    expect(result.err).toMatch(/JS error inside callback/);
   });
 });
