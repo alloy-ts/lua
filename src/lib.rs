@@ -2,6 +2,12 @@ use napi::bindgen_prelude::*;
 use napi_derive::napi;
 use ottavino::{Closure, Executor, Function, Lua as OLua, Value as OValue};
 
+#[napi(object)]
+pub struct GcMetrics {
+    pub total_allocation: f64,
+    pub allocation_debt: f64,
+}
+
 #[napi]
 pub struct Lua {
     inner: OLua,
@@ -13,6 +19,56 @@ impl Lua {
     pub fn new() -> Self {
         Lua {
             inner: OLua::full(),
+        }
+    }
+
+    #[napi(factory)]
+    pub fn empty() -> Self {
+        Lua {
+            inner: OLua::empty(),
+        }
+    }
+
+    #[napi(factory)]
+    pub fn core() -> Self {
+        Lua {
+            inner: OLua::core(),
+        }
+    }
+
+    #[napi(factory)]
+    pub fn full() -> Self {
+        Lua {
+            inner: OLua::full(),
+        }
+    }
+
+    #[napi]
+    pub fn load_core(&mut self) {
+        self.inner.load_core();
+    }
+
+    #[napi]
+    pub fn load_io(&mut self) {
+        self.inner.load_io();
+    }
+
+    #[napi]
+    pub fn total_memory(&self) -> f64 {
+        self.inner.total_memory() as f64
+    }
+
+    #[napi]
+    pub fn gc_collect(&mut self) {
+        self.inner.gc_collect();
+    }
+
+    #[napi]
+    pub fn gc_metrics(&self) -> GcMetrics {
+        let m = self.inner.gc_metrics();
+        GcMetrics {
+            total_allocation: m.total_allocation() as f64,
+            allocation_debt: m.allocation_debt(),
         }
     }
 

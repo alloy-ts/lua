@@ -19,12 +19,28 @@ const message = lua.eval("return 'Hello from Lua!'");
 console.log(message); // "Hello from Lua!"
 ```
 
-## API
+## Documentation & Examples
+
+- **[API Reference Documentation](docs/api.md)**: Detailed specification of all exported classes, methods, and interfaces.
+- **[Examples](examples/)**:
+  - [`examples/variables.ts`](examples/variables.ts): Defining variables, primitives, read-only constants, and objects/tables.
+  - [`examples/function.ts`](examples/function.ts): Defining functions, higher-order functions, and stateful closures.
+  - [`examples/memory.ts`](examples/memory.ts): Memory monitoring and explicit garbage collection (`totalMemory()`, `gcCollect()`, `gcMetrics()`).
+  - [`examples/stdlib.ts`](examples/stdlib.ts): Sandboxing and standard library controls (`Lua.empty()`, `Lua.core()`, `Lua.full()`, `loadCore()`, `loadIo()`).
+
+## API Summary
 
 ### `Lua`
 
-- **`new Lua()`**: Constructs a new Lua instance with the full standard library loaded.
-- **`eval(code: string): string`**: Compiles and executes the provided Lua code string within the environment, returning the result formatted as a string.
+- **`new Lua()` / `Lua.full()`**: Constructs a Lua instance with the full standard library (including I/O).
+- **`Lua.empty()`**: Constructs a completely sandboxed Lua instance without stdlib modules.
+- **`Lua.core()`**: Constructs a sandboxed Lua instance with non-I/O stdlib modules loaded.
+- **`loadCore()`**: Loads non-I/O stdlib modules (`base`, `coroutine`, `math`, `string`, `table`).
+- **`loadIo()`**: Loads I/O stdlib modules.
+- **`eval(code: string): string`**: Compiles and executes Lua code string, returning the formatted result string.
+- **`totalMemory(): number`**: Returns currently allocated memory in bytes.
+- **`gcCollect(): void`**: Triggers a complete garbage collection cycle.
+- **`gcMetrics(): GcMetrics`**: Returns snapshot of GC metrics.
 
 ## Development
 
@@ -34,7 +50,7 @@ console.log(message); // "Hello from Lua!"
 npm install
 ```
 
-- Build the native addon:
+- Build native addon:
 
 ```bash
 npm run build
@@ -44,4 +60,13 @@ npm run build
 
 ```bash
 npm test
+```
+
+- Run example scripts:
+
+```bash
+node --import @oxc-node/core examples/variables.ts
+node --import @oxc-node/core examples/function.ts
+node --import @oxc-node/core examples/memory.ts
+node --import @oxc-node/core examples/stdlib.ts
 ```
