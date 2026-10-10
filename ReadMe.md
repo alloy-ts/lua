@@ -13,6 +13,11 @@ To support embedded Lua in TypeScript/JavaScript via NAPI:
 3. **Type Conversion**: JS primitives (`number`, `string`, `boolean`, `null/undefined`) and structures (`object`, `array`) are mapped bidirectionally to Lua types (`integer`, `number`, `string`, `table`, `nil`).
 4. **Exported API**: The `Lua` class is exported via NAPI to TypeScript/JavaScript, providing methods to evaluate code, manage global variables, load standard libraries, and control garbage collection.
 
+## Documentation
+
+- **[Language & Standard Library Guide](docs/lang-guide.md)**: Lua 5.4 basics, standard library overview (`math`, `string`, `table`, `coroutine`, `io`), and what the pure-Rust Ottavino engine provides.
+- **[API Reference](docs/api.md)**: Full API documentation for the exported `Lua` class, constructors, methods, GC metrics interface, and JS-to-Lua type mapping rules.
+
 ## Examples & Usage
 
 ### 1. Defining Lua Variables, Objects & Constants from TS/JS
@@ -212,18 +217,6 @@ Because `ottavino` is a pure Rust Lua VM, cross-compiling to WebAssembly does no
 ## API Reference
 
 For complete API documentation, including constructor overloads, method signatures, memory GC metrics interfaces, and JS-to-Lua type mapping rules, see [docs/api.md](docs/api.md).
-
-### Summary
-
-- `new Lua()` / `Lua.full()`: Instantiates a Lua VM with full stdlib (base, coroutine, math, string, table, I/O).
-- `Lua.core()`: Instantiates a Lua VM with core stdlib (no I/O).
-- `Lua.empty()`: Instantiates an empty sandboxed Lua VM.
-- `lua.eval(code: string): unknown`: Compiles and executes Lua code string.
-- `lua.setGlobal(name: string, value: unknown): void`: Binds a JS primitive, array, or object to a Lua global variable.
-- `lua.getGlobal(name: string): unknown`: Retrieves a Lua global variable.
-- `lua.loadCore()` / `lua.loadIo()`: Loads core or I/O stdlib into an existing state.
-- `lua.totalMemory(): number`: Returns memory used in bytes.
-- `lua.gcCollect()` / `lua.gcMetrics()`: Triggers garbage collection and fetches GC metrics.
 
 ## Development
 
