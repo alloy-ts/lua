@@ -13,8 +13,8 @@ environments without external native C dependencies.
   full standard libraries.
 - **Eval Lua Code**: Run arbitrary Lua scripts and return JavaScript primitives,
   objects, and arrays.
-- **Global Variable Binding**: Get and set global variables in the Lua VM
-  directly from JS/TS.
+- **Global Variable Binding**: Access and bind global variables (`_ENV`) via `globals().get()` and `globals().set()`.
+- **JS Callbacks in Lua**: Pass JavaScript functions to `globals().set()` to execute JS functions directly from Lua with full error propagation (`pcall`/`xpcall`).
 - **GC & Memory Controls**: Monitor memory consumption (`totalMemory()`) and
   manually trigger garbage collection (`gcCollect()`).
 
@@ -23,7 +23,7 @@ environments without external native C dependencies.
 ```typescript
 import { Lua } from "@alloy-ts/lua";
 
-// Create a Lua instance with the full standard library loaded
+// Create a Lua instance with standard libraries loaded
 const lua = Lua.full();
 
 // Evaluate Lua expressions and scripts
@@ -33,14 +33,20 @@ console.log(result); // 7
 const greeting = lua.eval("return 'Hello, ' .. 'Lua!'");
 console.log(greeting); // "Hello, Lua!"
 
-// Set global variables from JS/TS
-lua.setGlobal("multiplier", 10);
-lua.setGlobal("data", { name: "Lua", active: true });
+// Access globals via lua.globals()
+const globals = lua.globals();
 
-// Read global variables and use them in Lua code
-console.log(lua.getGlobal("multiplier")); // 10
-const calculated = lua.eval("return data.name .. ' x' .. multiplier");
-console.log(calculated); // "Lua x10"
+// Set global variables from JS/TS
+globals.set("multiplier", 10);
+globals.set("data", { name: "Lua", active: true });
+
+// Register JS callbacks callable from Lua
+globals.set("add", (a: number, b: number) => a + b);
+
+// Read global variables and use JS callbacks in Lua code
+console.log(globals.get("multiplier")); // 10
+const calculated = lua.eval("return add(multiplier, 5)");
+console.log(calculated); // 15
 
 // Working with Lua tables (returned as JS objects or arrays)
 const arrayResult = lua.eval("return { 10, 20, 30 }");
@@ -55,20 +61,17 @@ lua.gcCollect();
 
 ### Constructors
 
-- `Lua.full()` or `new Lua()`: Instantiates a Lua VM with the full standard
-  library loaded (base, coroutine, math, string, table, I/O).
-- `Lua.core()`: Instantiates a Lua VM with core standard libraries loaded (no
-  I/O).
+- `Lua.full()` or `new Lua()`: Instantiates a Lua VM with standard libraries loaded.
+- `Lua.core()`: Instantiates a Lua VM with core standard libraries loaded.
 - `Lua.empty()`: Instantiates an empty Lua VM with no standard libraries.
 
 ### Methods
 
 - `lua.eval(code: string): unknown`: Compiles and executes the given Lua code
   string, returning the result as a JavaScript value.
-- `lua.setGlobal(name: string, value: unknown): void`: Sets a global variable in
-  the Lua VM environment.
-- `lua.getGlobal(name: string): unknown`: Retrieves a global variable from the
-  Lua VM environment.
+- `lua.globals(): Globals`: Returns the `Globals` handle for interacting with global variables (`_ENV`), mirroring Ottavino's Rust API.
+  - `globals.get(name: string): unknown`: Retrieves a global variable from the Lua environment.
+  - `globals.set(name: string, value: unknown): void`: Binds a global variable in the Lua environment. Converts primitives, JS objects/arrays to Lua tables, and JS functions to callable Ottavino `Callback`s.
 - `lua.loadCore(): void`: Loads core standard libraries into an existing Lua
   state.
 - `lua.loadIo(): void`: Loads I/O standard libraries into an existing Lua state.
@@ -79,7 +82,7 @@ lua.gcCollect();
 
 ### Value Conversion
 
-Results of `eval` and values read via `getGlobal` are converted from Lua values
+Results of `eval` and values read via `globals().get` are converted from Lua values
 to JavaScript as follows:
 
 | Lua value            | JavaScript value                        |
@@ -95,12 +98,10 @@ to JavaScript as follows:
 | `thread`             | `"[lua thread]"` (placeholder string)   |
 | `userdata`           | `"[lua userdata]"` (placeholder string) |
 
-Conversely, `setGlobal` converts JavaScript `undefined`/`null` → `nil`,
+Conversely, `globals().set` converts JavaScript `undefined`/`null` → `nil`,
 `boolean` → `boolean`, integer-valued `number` → Lua `integer` (otherwise
-`number`), `string` → `string`, `Array` → sequential `table`, and plain `Object`
-→ keyed `table`. A Lua `table` is treated as an `Array` whenever its sequential
-length is greater than zero, so a table that mixes a sequence with hash keys may
-lose the hash entries.
+`number`), `string` → `string`, `Array` → sequential `table`, plain `Object`
+→ keyed `table`, and `Function` → callable Ottavino `Callback`.
 
 ## Development
 
@@ -110,47 +111,14 @@ lose the hash entries.
 npm install
 ```
 
-- Run unit tests:
-
-```bash
-npm test
-```
-
-The suite is split across two files:
-
-- `src/main.test.ts` — smoke tests for the module entry point and a few core
-  `eval`/`globals`/`memory` scenarios.
-- `src/lua.test.ts` — the full `Lua` API coverage: constructors (`new Lua()`,
-  `Lua.full()`, `Lua.core()`, `Lua.empty()`), primitive/table `eval` results,
-  JS↔Lua value conversion, global variable binding, incremental stdlib loading
-  (`loadCore`/`loadIo`), memory/GC controls, and error handling (compile vs.
-  runtime errors).
-
-Both files import the `Lua` class through `src/main.ts`, which in turn
-re-exports it from the native binding loader. The native addon must be built
-first (`npm run build`) so that the generated loader and type declarations
-actually export `Lua`.
-
-- Build the library and native add-on:
+- Build native addon:
 
 ```bash
 npm run build
 ```
 
-- Code formatting:
+- Run unit tests:
 
 ```bash
-npm run fmt
-```
-
-- Linting:
-
-```bash
-npm run lint
-```
-
-- Code check:
-
-```bash
-npm run check
+npm test
 ```
