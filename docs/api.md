@@ -8,6 +8,7 @@ From `dist/index.js` (and `@lib/module`):
 
 - **Classes / Structs:**
   - `Lua`: The main execution environment for running Lua code.
+  - `LuaExecutor`: Bounded stepping executor handle created via `lua.executor(code)`.
   - `Context`: Internal bridge handle to an active garbage collector mutation context.
   - `Function`: Opaque handle to a Lua function prototype.
   - `RuntimeError`: Shareable wrapper around a Rust runtime error.
@@ -29,8 +30,10 @@ Top-level class representing a Lua 5.4 execution environment.
 
 - [Code Execution](#code-execution)
   - [`lua.eval(code: string): string`](#luaevalcode-string-string)
+  - [`lua.executor(code: string): LuaExecutor`](#luaexecutorcode-string-luaexecutor)
 - [Global Variable Management](#global-variable-management)
   - [`lua.setGlobal(key: string, value: string): void`](#luasetglobalkey-string-value-string-void)
+  - [`lua.getGlobal(name: string): string`](#luagetglobalname-string-string)
 - [Standard Library Management](#standard-library-management)
   - [`lua.loadCore(): void`](#lualoadcore-void)
   - [`lua.loadIo(): void`](#lualoadio-void)
@@ -41,90 +44,38 @@ Top-level class representing a Lua 5.4 execution environment.
 
 ---
 
-### Constructors & Factory Details
-
-#### `Lua.empty(): Lua`
-
-Instantiates an empty Lua VM with no standard library modules loaded.
-
-#### `Lua.core(): Lua`
-
-Instantiates a Lua VM with core non-I/O standard library modules loaded (`base`, `coroutine`, `math`, `string`, `table`).
-
-#### `Lua.full(): Lua`
-
-Instantiates a Lua VM with the full standard library loaded (including I/O).
-
----
-
 ### Method Details
 
 #### `lua.eval(code: string): string`
 
-Compiles and evaluates a Lua code snippet, returning the string representation of the result value. Throws a JavaScript `Error` if compilation or execution fails.
+Compiles and evaluates a Lua code snippet, returning the string representation of the result value. Returns an `Error` object if compilation or execution fails.
 
-- **Parameters:**
-  - `code` (`string`): The Lua code snippet to compile and run.
-- **Returns:** `string` — Display string of the returned value (`"nil"` if no value is returned).
+#### `lua.executor(code: string): LuaExecutor`
+
+Compiles the given Lua code and returns a `LuaExecutor` handle for bounded step-by-step execution.
 
 #### `lua.setGlobal(key: string, value: string): void`
 
-Sets a global variable in the Lua environment.
+Sets a global string variable in the Lua environment.
 
-- **Parameters:**
-  - `key` (`string`): Variable name in the global table.
-  - `value` (`string`): String value to assign.
+#### `lua.getGlobal(name: string): string`
 
-#### `lua.loadCore(): void`
-
-Loads core standard library modules (`base`, `coroutine`, `math`, `string`, `table`) into an existing `Lua` instance.
-
-#### `lua.loadIo(): void`
-
-Loads I/O standard library modules into an existing `Lua` instance.
-
-#### `lua.totalMemory(): number`
-
-Returns total memory used by the Lua VM in bytes.
-
-#### `lua.gcCollect(): void`
-
-Triggers a full garbage collection cycle in the Lua VM.
-
-#### `lua.gcMetrics(): GcMetrics`
-
-Returns garbage collector metrics (`totalAllocation`, `allocationDebt`).
-
-```typescript
-interface GcMetrics {
-  totalAllocation: number;
-  allocationDebt: number;
-}
-```
+Retrieves a global variable from the Lua environment as a display string.
 
 ---
 
-## Usage Example
+## `LuaExecutor` Class
 
-```typescript
-import { Lua } from "@lib/module";
+Handle to an active Lua execution frame that can be stepped with fuel limits.
 
-const lua = Lua.core();
+### Methods
 
-// Set globals
-lua.setGlobal("appName", "My App");
+#### `exec.step(lua: Lua, fuelLimit: number): boolean`
 
-// Define functions and objects
-lua.eval(`
-  User = {
-    name = "Alice",
-    greet = function(self)
-      return "Hello " .. self.name .. " from " .. appName
-    end
-  }
-`);
+Steps execution by up to `fuelLimit` VM units.
 
-// Evaluate
-const greeting = lua.eval("return User:greet()");
-console.log(greeting); // "Hello Alice from My App"
-```
+- **Returns:** `true` if execution has completed, `false` if more fuel is required.
+
+#### `exec.takeResult(lua: Lua): string`
+
+Retrieves the result string after `exec.step` returns `true`.

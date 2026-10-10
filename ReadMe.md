@@ -9,6 +9,7 @@ Embed and execute Lua code directly in Node.js / TypeScript using native NAPI-RS
   - `Lua.empty()`: Bare-bones environment without stdlib.
   - `Lua.core()`: Non-I/O standard library loaded (math, string, table, base, coroutine).
   - `Lua.full()`: Full standard library including I/O loaded.
+- **Bounded Step Execution**: Drive execution step-by-step with `lua.executor(code)` and `exec.step(lua, fuel)` for pacing and cancellation.
 - **NAPI Native Speed**: Fast, native execution powered by Rust and `ottavino`.
 
 ## Usage Example
@@ -19,13 +20,19 @@ import { Lua } from "@lib/module";
 // Create a Lua instance with the core stdlib loaded
 const lua = Lua.core();
 
+// Set global variables
+lua.setGlobal("appName", "My App");
+
 // Evaluate Lua expressions
 const result = lua.eval("return string.upper('hello from lua')");
 console.log(result); // "HELLO FROM LUA"
 
-// Math evaluation
-const mathResult = lua.eval("return math.sqrt(144)");
-console.log(mathResult); // "12"
+// Bounded step execution with fuel pacing
+const exec = lua.executor("local sum = 0; for i = 1, 100 do sum = sum + i end; return sum");
+while (!exec.step(lua, 50)) {
+  // Can yield, pause, or cancel loop between steps
+}
+console.log("Executor result:", exec.takeResult(lua)); // "5050"
 ```
 
 ## Development
@@ -42,7 +49,7 @@ npm run prepare
 vp install
 ```
 
-- Run the unit tests:
+- Run unit tests:
 
 ```bash
 vp test
@@ -60,7 +67,7 @@ npm run dev
 npm run build:napi
 ```
 
-- Build the library:
+- Build library:
 
 ```bash
 npm run build

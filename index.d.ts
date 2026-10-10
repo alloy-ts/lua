@@ -43,8 +43,20 @@ export declare class Lua {
   gcMetrics(): GcMetrics;
   /** Set a global string variable in the Lua environment. */
   setGlobal(key: string, value: string): void;
+  /** Retrieve a global variable from the Lua environment as a display string. */
+  getGlobal(name: string): string;
+  /** Create an async/stepping executor for the given Lua code string. */
+  executor(code: string): LuaExecutor;
   /** Compile and evaluate Lua code, returning the string representation of the result value. */
   eval(code: string): string;
+}
+
+/** A handle to an active Lua executor that can be stepped with bounded fuel. */
+export declare class LuaExecutor {
+  /** Step the executor using the given fuel limit. Returns `true` if finished, `false` if pending. */
+  step(lua: Lua, fuelLimit: number): boolean;
+  /** Take the result value after execution has completed, returning its string representation. */
+  takeResult(lua: Lua): string;
 }
 
 /** A shareable, dynamically typed wrapper around a Rust error, safe to hand to JS. */

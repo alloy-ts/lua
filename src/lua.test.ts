@@ -19,7 +19,7 @@ test("Lua full stdlib evaluation", () => {
   expect(res).toBe("4");
 });
 
-test("Lua syntax error throws JS exception", () => {
+test("Lua syntax error throws JavaScript exception", () => {
   const lua = Lua.core();
   expect(() => {
     lua.eval("invalid lua syntax !!!");

@@ -885,10 +885,11 @@ if (!nativeBinding) {
   throw new Error(`Failed to load native binding`);
 }
 
-const { Context, ExternError, Function, Lua, RuntimeError } = nativeBinding;
+const { Context, ExternError, Function, Lua, LuaExecutor, RuntimeError } = nativeBinding;
 export { Context };
 export { ExternError };
 export { Function };
 export { Lua };
+export { LuaExecutor };
 export { RuntimeError };
 export const __napiBindingTarget = __napiLoadedBindingTarget;
