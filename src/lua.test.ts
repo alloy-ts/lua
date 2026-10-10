@@ -13,11 +13,11 @@ describe("Lua constructors", () => {
     expect(typeof lua.eval).toBe("function");
     expect(lua.eval("return 1 + 1")).toBe(2);
     // A default instance ships with the I/O library.
-    expect(lua.eval("return io ~= nil")).toBe(true);
+    expect(lua.eval("return print ~= nil")).toBe(true);
   });
 
   test("Lua.full() exposes the I/O library", () => {
-    expect(Lua.full().eval("return io ~= nil")).toBe(true);
+    expect(Lua.full().eval("return print ~= nil")).toBe(true);
   });
 
   test("Lua.core() omits the I/O library", () => {
@@ -92,29 +92,29 @@ describe("Lua.eval - value conversion", () => {
   });
 });
 
-describe("global variables", () => {
-  test("setGlobal / getGlobal round-trip scalars", () => {
+describe("global variables via globals()", () => {
+  test("globals().set / globals().get round-trip scalars", () => {
     const lua = Lua.full();
-    lua.setGlobal("num", 10);
-    lua.setGlobal("str", "hi");
-    lua.setGlobal("flag", true);
+    lua.globals().set("num", 10);
+    lua.globals().set("str", "hi");
+    lua.globals().set("flag", true);
 
-    expect(lua.getGlobal("num")).toBe(10);
-    expect(lua.getGlobal("str")).toBe("hi");
-    expect(lua.getGlobal("flag")).toBe(true);
+    expect(lua.globals().get("num")).toBe(10);
+    expect(lua.globals().get("str")).toBe("hi");
+    expect(lua.globals().get("flag")).toBe(true);
   });
 
   test("globals set from JS are visible to later eval calls", () => {
     const lua = Lua.full();
-    lua.setGlobal("multiplier", 3);
+    lua.globals().set("multiplier", 3);
     expect(lua.eval("return multiplier * 4")).toBe(12);
   });
 
   test("nested tables round-trip through globals (1-indexed arrays)", () => {
     const lua = Lua.full();
-    lua.setGlobal("cfg", { db: { host: "localhost" }, ports: [1, 2, 3] });
+    lua.globals().set("cfg", { db: { host: "localhost" }, ports: [1, 2, 3] });
 
-    expect(lua.getGlobal("cfg")).toEqual({
+    expect(lua.globals().get("cfg")).toEqual({
       db: { host: "localhost" },
       ports: [1, 2, 3],
     });
@@ -122,15 +122,15 @@ describe("global variables", () => {
     expect(lua.eval("return cfg.ports[2]")).toBe(2);
   });
 
-  test("a global defined in Lua is readable via getGlobal", () => {
+  test("a global defined in Lua is readable via globals().get", () => {
     const lua = Lua.full();
     lua.eval("shared = 'from lua'");
-    expect(lua.getGlobal("shared")).toBe("from lua");
+    expect(lua.globals().get("shared")).toBe("from lua");
   });
 
   test("an unset global returns undefined", () => {
     const lua = Lua.full();
-    expect(lua.getGlobal("does_not_exist")).toBeUndefined();
+    expect(lua.globals().get("does_not_exist")).toBeUndefined();
   });
 });
 
@@ -155,7 +155,7 @@ describe("standard-library loading", () => {
     const lua = Lua.empty();
     lua.loadCore();
     lua.loadIo();
-    expect(lua.eval("return io ~= nil")).toBe(true);
+    expect(lua.eval("return print ~= nil")).toBe(true);
   });
 });
 
@@ -189,5 +189,72 @@ describe("error handling", () => {
   test("runtime errors surface as a runtime error", () => {
     const lua = Lua.full();
     expect(() => lua.eval("error('boom')")).toThrow(/Lua runtime error/);
+  });
+});
+
+describe("Executor / step execution", () => {
+  test("executor runs code step-by-step with fuel", () => {
+    const lua = Lua.full();
+    const exec = lua.executor("local sum = 0; for i = 1, 100 do sum = sum + i end; return sum");
+    expect(exec).toBeDefined();
+
+    let done = false;
+    let iterations = 0;
+    while (!done && iterations < 1000) {
+      done = exec.step(10);
+      iterations++;
+    }
+
+    expect(done).toBe(true);
+    expect(iterations).toBeGreaterThan(1);
+    expect(exec.takeResult()).toBe(5050);
+  });
+
+  test("executor stop cancels execution", () => {
+    const lua = Lua.full();
+    const exec = lua.executor("while true do end");
+    const doneInitial = exec.step(10);
+    expect(doneInitial).toBe(false);
+    expect(exec.mode()).toBe("normal");
+
+    exec.stop();
+    expect(exec.mode()).toBe("stopped");
+  });
+});
+
+describe("Coroutine / Thread API", () => {
+  test("createThread returns a Thread object in stopped mode", () => {
+    const lua = Lua.full();
+    const thread = lua.createThread();
+    expect(thread).toBeDefined();
+    expect(thread.mode()).toBe("stopped");
+  });
+
+  test("reset changes thread mode back to stopped", () => {
+    const lua = Lua.full();
+    const thread = lua.createThread();
+    expect(() => thread.reset()).not.toThrow();
+    expect(thread.mode()).toBe("stopped");
+  });
+
+  test("eval returning coroutines surfaces Thread object", () => {
+    const lua = Lua.full();
+    const threadObj = lua.eval("return coroutine.create(function() end)");
+    expect(threadObj).toBeDefined();
+    expect(typeof threadObj).toBe("object");
+    expect((threadObj as any).mode()).toBe("suspended");
+  });
+
+  test("coroutine yield and resume work via Lua", () => {
+    const lua = Lua.full();
+    const res = lua.eval(`
+      local co = coroutine.create(function(a, b)
+        coroutine.yield(a + b)
+        return "finished"
+      end)
+      local ok, val = coroutine.resume(co, 10, 20)
+      return { ok = ok, val = val }
+    `);
+    expect(res).toEqual({ ok: true, val: 30 });
   });
 });
