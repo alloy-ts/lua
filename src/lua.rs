@@ -297,7 +297,8 @@ impl Lua {
         let mut res_js_val = JsVal::Nil;
         self.inner.try_enter(|ctx| {
             let exec = ctx.fetch(&executor);
-            let val: OValue = exec.take_result(ctx)??;
+            let res = exec.take_result::<OValue>(ctx).map_err(to_napi_err)?;
+            let val = res.map_err(to_napi_err)?;
             res_js_val = match val {
                 OValue::Nil => JsVal::Nil,
                 OValue::Boolean(b) => JsVal::Boolean(b),
