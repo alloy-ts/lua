@@ -74,9 +74,10 @@ node --import @oxc-node/core/register examples/memory.ts
 node --import @oxc-node/core/register examples/stdlib.ts
 ```
 
-## API Reference
+## Documentation
 
-Detailed API documentation can be found in [`docs/api.md`](docs/api.md).
+- [`docs/api.md`](docs/api.md) — Detailed JS/TS API reference for `@alloy-ts/lua`.
+- [`docs/lang-guide.md`](docs/lang-guide.md) — Lua 5.4 language guide, standard library modules, and Ottavino Rust VM capabilities & sandboxing features.
 
 ### Summary of `Lua` Methods
 
