@@ -1,8 +1,17 @@
-# Lua
+# Lua in TypeScript / JavaScript via NAPI
 
-> Embed a Lua execution environment into TypeScript and JavaScript applications using Lua's C/Rust VM API via NAPI.
+> Embed a Lua execution environment into TypeScript and JavaScript applications by exporting Lua's API via NAPI (Node-API).
 
 This library uses [NAPI-RS](https://napi.rs/) and [Ottavino](https://github.com/kyren/ottavino) (a pure Rust Lua 5.4 VM implementation) to safely expose Lua's API to Node.js and JavaScript environments without external native C dependencies.
+
+## How it Works
+
+To support embedded Lua in TypeScript/JavaScript via NAPI:
+
+1. **Native Binding Layer (NAPI-RS)**: Rust functions and classes are decorated with `#[napi]` attributes to generate native Node.js bindings (`.node` binary).
+2. **Lua Engine**: A Rust-implemented Lua 5.4 VM (`ottavino`) executes Lua bytecode sandboxed inside the process memory space.
+3. **Type Conversion**: JS primitives (`number`, `string`, `boolean`, `null/undefined`) and structures (`object`, `array`) are mapped bidirectionally to Lua types (`integer`, `number`, `string`, `table`, `nil`).
+4. **Exported API**: The `Lua` class is exported via NAPI to TypeScript/JavaScript, providing methods to evaluate code, manage global variables, load standard libraries, and control garbage collection.
 
 ## Features
 
