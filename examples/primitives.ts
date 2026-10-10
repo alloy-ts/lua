@@ -9,7 +9,7 @@ function runPrimitivesExample() {
   // Create a Lua VM instance
   const lua = Lua.full();
 
-  // 1. Defining Lua primitive types from TS/JS primitives using NAPI
+  // 1. Defining Lua primitive types from TS/JS primitives using NAPI and globals() API
   // NAPI automatically converts TS primitive types to corresponding Lua primitives:
   // - TS number (integer)   -> Lua integer
   // - TS number (float)     -> Lua float (number)
@@ -23,12 +23,12 @@ function runPrimitivesExample() {
   const tsBool = true;
   const tsNil = null;
 
-  // Define global variables in Lua VM from TS primitives via setGlobal()
-  lua.setGlobal("appPort", tsNumInt);
-  lua.setGlobal("pi", tsNumFloat);
-  lua.setGlobal("greeting", tsString);
-  lua.setGlobal("isDebug", tsBool);
-  lua.setGlobal("optionalData", tsNil);
+  // Define global variables in Lua VM via lua.globals().set()
+  lua.globals().set("appPort", tsNumInt);
+  lua.globals().set("pi", tsNumFloat);
+  lua.globals().set("greeting", tsString);
+  lua.globals().set("isDebug", tsBool);
+  lua.globals().set("optionalData", tsNil);
 
   // 2. Accessing defined variables in Lua scripts
   console.log("Reading variables inside Lua:");
@@ -39,21 +39,21 @@ function runPrimitivesExample() {
 
   // 3. Modifying Lua global variables from TS and Lua
   console.log("\nModifying global variables:");
-  lua.setGlobal("appPort", 8080); // Re-assign variable from TS
-  console.log("Updated appPort from TS:", lua.getGlobal("appPort")); // 8080
+  lua.globals().set("appPort", 8080); // Re-assign variable from TS
+  console.log("Updated appPort from TS:", lua.globals().get("appPort")); // 8080
 
   lua.eval("appPort = appPort + 1"); // Re-assign variable inside Lua script
-  console.log("Updated appPort after Lua eval:", lua.getGlobal("appPort")); // 8081
+  console.log("Updated appPort after Lua eval:", lua.globals().get("appPort")); // 8081
 
   // 4. Defining Lua constants from TS
   // How to define constants from TS using NAPI:
   //
-  // Option A: TS 'const' bindings pushed as globals via setGlobal
+  // Option A: TS 'const' bindings pushed as globals via globals().set()
   const MAX_CONNECTIONS = 1000;
-  lua.setGlobal("MAX_CONNECTIONS", MAX_CONNECTIONS);
+  lua.globals().set("MAX_CONNECTIONS", MAX_CONNECTIONS);
   console.log(
     "\nConstant defined via TS const (MAX_CONNECTIONS):",
-    lua.getGlobal("MAX_CONNECTIONS"),
+    lua.globals().get("MAX_CONNECTIONS"),
   );
 
   // Option B: Native Lua 5.4 local constants using the '<const>' attribute inside scripts

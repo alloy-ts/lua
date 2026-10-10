@@ -6,10 +6,10 @@ The `@alloy-ts/lua` library exposes native Node.js/TypeScript bindings for the [
 
 ## Table of Contents
 
-- [1. TypeScript/JavaScript Public NAPI API](#1-typescriptjavascript-public-napi-api)
+- [1. TypeScript/JavaScript Public API](#1-typescriptjavascript-public-api)
   - [Constructors & Static Factory Methods](#constructors--static-factory-methods)
   - [Code Execution](#code-execution)
-  - [Global Variable Management](#global-variable-management)
+  - [Global Variable Management (`lua.globals()`)](#global-variable-management-luaglobals)
   - [Standard Library Management](#standard-library-management)
   - [Memory & Garbage Collection](#memory--garbage-collection)
 - [2. Type Conversions (JS ↔ Lua)](#2-type-conversions-js--lua)
@@ -19,7 +19,7 @@ The `@alloy-ts/lua` library exposes native Node.js/TypeScript bindings for the [
 
 ---
 
-## 1. TypeScript/JavaScript Public NAPI API
+## 1. TypeScript/JavaScript Public API
 
 ### Constructors & Static Factory Methods
 
@@ -59,22 +59,32 @@ Compiles and executes a Lua code string, returning the resulting value as a Java
 
 ---
 
-### Global Variable Management
+### Global Variable Management (`lua.globals()`)
 
-#### `lua.setGlobal(name: string, value: unknown): void`
+`lua.globals()` returns a `Globals` handle for interacting with global variables (`_ENV` / `ctx.globals()`), mirroring Ottavino's Rust API.
 
-Binds a global variable in the Lua VM environment.
+#### `lua.globals(): Globals`
+
+- **Returns**: `Globals` — Interface providing `.get()` and `.set()` methods for environment variables.
+
+#### `globals.set(name: string, value: unknown): void`
+
+Binds a global variable in the Lua environment.
 
 - **Parameters**:
   - `name` (`string`) — Global variable name.
   - `value` (`unknown`) — JS primitive or object value converted to Lua.
+- **Under the Hood**:
+  Executes `ctx.globals().set(ctx, key, lua_val)` on Ottavino's `Table` handle inside `self.inner.enter()`. Converts JS primitives, objects/arrays to Lua tables, and JS functions to callable Ottavino `Callback`s.
 
-#### `lua.getGlobal(name: string): unknown`
+#### `globals.get(name: string): unknown`
 
-Retrieves a global variable from the Lua VM environment.
+Retrieves a global variable from the Lua environment.
 
 - **Parameters**: `name` (`string`) — Global variable name.
 - **Returns**: `unknown` — Value converted from Lua to JavaScript (or `undefined` if unset/`nil`).
+- **Under the Hood**:
+  Executes `ctx.globals().get_raw(ottavino::Value::String(key))` on Ottavino's `Table` handle inside `self.inner.enter()`.
 
 ---
 
@@ -112,7 +122,7 @@ Retrieves a snapshot of garbage collector metrics.
 
 ## 2. Type Conversions (JS ↔ Lua)
 
-### JS to Lua (`setGlobal`)
+### JS to Lua (`globals.set`)
 
 - `undefined` / `null` → `nil`
 - `boolean` → `boolean`
@@ -122,7 +132,7 @@ Retrieves a snapshot of garbage collector metrics.
 - `Array` → Sequential 1-indexed `table`
 - Plain `Object` → Keyed `table`
 
-### Lua to JS (`eval` / `getGlobal`)
+### Lua to JS (`eval` / `globals.get`)
 
 - `nil` → `undefined`
 - `boolean` → `boolean`
@@ -146,15 +156,15 @@ The table below maps the internal types and mechanisms provided by the **Ottavin
 | Ottavino Rust Crate Type  | Description                                                                                                                           | `@alloy-ts/lua` NAPI TS Binding Mapping                                                                                                       |
 | :------------------------ | :------------------------------------------------------------------------------------------------------------------------------------ | :-------------------------------------------------------------------------------------------------------------------------------------------- |
 | `ottavino::Value<'gc>`    | Single enum representing all Lua values (`Nil`, `Boolean`, `Integer`, `Number`, `String`, `Table`, `Function`, `Thread`, `UserData`). | Automatically converted to JS primitives, objects, arrays, or placeholder strings (`"[lua function]"`, `"[lua thread]"`, `"[lua userdata]"`). |
-| `ottavino::Table<'gc>`    | Heterogeneous table storing keyed/sequential elements.                                                                                | Converted recursively from/to JS `Object` and JS `Array`.                                                                                     |
+| `ottavino::Table<'gc>`    | Heterogeneous table storing keyed/sequential elements.                                                                                | Converted recursively from/to JS `Object` and JS `Array`. Accessed via `ctx.globals()`.                                                       |
 | `ottavino::Closure<'gc>`  | Compiled Lua bytecode function closure.                                                                                               | Compiled via `Closure::load` inside `lua.eval()`.                                                                                             |
-| `ottavino::Callback<'gc>` | Native Rust callback function exposed to Lua.                                                                                         | Internal stdlib callbacks registered inside Ottavino.                                                                                         |
+| `ottavino::Callback<'gc>` | Native Rust callback function exposed to Lua (`Callback::from_fn`).                                                                   | Internal stdlib callbacks registered inside Ottavino.                                                                                         |
 | `ottavino::Function<'gc>` | Enum over `Closure` or `Callback`.                                                                                                    | Surfaced in TS as `"[lua function]"`.                                                                                                         |
 | `ottavino::Executor<'gc>` | VM execution state for invoking closures/threads.                                                                                     | Started via `Executor::start(ctx, closure, ())` and driven to completion via `self.inner.finish(&stashed)` in `lua.eval()`.                   |
 | `ottavino::Thread<'gc>`   | Coroutine execution context / thread.                                                                                                 | Surfaced in TS as `"[lua thread]"`.                                                                                                           |
 | `ottavino::UserData<'gc>` | Custom Rust data registered with GC arena.                                                                                            | Surfaced in TS as `"[lua userdata]"`.                                                                                                         |
 | `ottavino::Stash`         | Rooted handle for preserving GC objects across VM entries.                                                                            | Used in `self.inner.enter(...)` and `self.inner.finish(...)` to safely hold executor instances across NAPI boundaries.                        |
-| `ottavino::Context<'gc>`  | Garbage-collected lifetime handle for VM operations.                                                                                  | Passed into closures inside `self.inner.enter(                                                                                                | ctx | ...)` for interning strings and allocating tables. |
+| `ottavino::Context<'gc>`  | Garbage-collected lifetime handle for VM operations.                                                                                  | Passed into closures inside `self.inner.enter(                                                                                                | ctx | ...)` for interning strings and allocating tables (`ctx.globals()`). |
 
 ---
 
@@ -166,8 +176,5 @@ The table below maps the internal types and mechanisms provided by the **Ottavin
 2. **`Executor` & `Closure`**:
    Evaluating Lua strings in `lua.eval()` compiles code into an `ottavino::Closure`, wraps it in an `ottavino::Executor`, stashes it using `ctx.stash()`, and executes it with `self.inner.finish(&stashed)`.
 
-3. **`Table`**:
-   Created via `ottavino::Table::new(&ctx)`. Key-value pairs are iterated using `.iter()` and sequential elements using length index `1..=len`.
-
-4. **`Stash` & `Context`**:
-   Allow safe lifetime management with `gc-arena` across NAPI method invocations.
+3. **Globals & `Table`**:
+   `lua.globals()` mirrors `ctx.globals()` in Ottavino, which returns the global environment table `_ENV` (`_G`). Calling `lua.globals().set(...)` invokes `ctx.globals().set(ctx, key, lua_val)` in Rust; calling `lua.globals().get(...)` invokes `ctx.globals().get_raw(...)`.

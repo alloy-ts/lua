@@ -12,7 +12,7 @@ function runObjectExample() {
 
   const lua = Lua.full();
 
-  // 1. Defining a Lua table/object from a plain JS/TS object using setGlobal
+  // 1. Defining a Lua table/object from a plain JS/TS object using globals().set()
   const user = {
     id: 101,
     name: "Alice",
@@ -23,8 +23,8 @@ function runObjectExample() {
     },
   };
 
-  // Pass TS object into Lua environment
-  lua.setGlobal("currentUser", user);
+  // Pass TS object into Lua environment via globals() API
+  lua.globals().set("currentUser", user);
 
   // 2. Accessing properties of the defined object inside Lua
   console.log("Reading object properties in Lua:");
@@ -39,7 +39,7 @@ function runObjectExample() {
   lua.eval("table.insert(currentUser.roles, 'maintainer')");
 
   // Read back modified object in TS/JS
-  const updatedUser = lua.getGlobal("currentUser");
+  const updatedUser = lua.globals().get("currentUser");
   console.log("Updated user read back in TypeScript:");
   console.log(JSON.stringify(updatedUser, null, 2));
 
@@ -86,7 +86,7 @@ function runObjectExample() {
     }
   `);
 
-  const productFromLua = lua.getGlobal("product");
+  const productFromLua = lua.globals().get("product");
   console.log("Product object created in Lua and retrieved in TS:", productFromLua);
 }
 

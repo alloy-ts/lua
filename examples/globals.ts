@@ -15,39 +15,39 @@ function runGlobalsExample() {
   // ==========================================
   console.log("--- Part 1: Primitive Types & Global Variables ---");
 
-  // NAPI automatically maps JS/TS primitives to Lua primitives:
+  // NAPI automatically maps JS/TS primitives to Lua primitives via lua.globals().set():
   // - TS number (integer) -> Lua integer
   // - TS number (float)   -> Lua float (number)
   // - TS string           -> Lua string
   // - TS boolean          -> Lua boolean
   // - TS null / undefined -> Lua nil
 
-  lua.setGlobal("appPort", 8080);
-  lua.setGlobal("pi", 3.14159);
-  lua.setGlobal("appName", "Lua NAPI Service");
-  lua.setGlobal("isProduction", false);
-  lua.setGlobal("deprecatedSetting", null);
+  lua.globals().set("appPort", 8080);
+  lua.globals().set("pi", 3.14159);
+  lua.globals().set("appName", "Lua NAPI Service");
+  lua.globals().set("isProduction", false);
+  lua.globals().set("deprecatedSetting", null);
 
   console.log("appName in Lua:", lua.eval("return appName")); // "Lua NAPI Service"
   console.log("appPort in Lua:", lua.eval("return appPort")); // 8080
   console.log("isProduction in Lua:", lua.eval("return isProduction")); // false
 
   // Modifying variables
-  lua.setGlobal("appPort", 9090);
-  console.log("Updated appPort from TS:", lua.getGlobal("appPort")); // 9090
+  lua.globals().set("appPort", 9090);
+  console.log("Updated appPort from TS:", lua.globals().get("appPort")); // 9090
 
   lua.eval("appPort = appPort + 10");
-  console.log("Updated appPort after Lua modification:", lua.getGlobal("appPort")); // 9100
+  console.log("Updated appPort after Lua modification:", lua.globals().get("appPort")); // 9100
 
   // ==========================================
   // Part 2: Defining Constants
   // ==========================================
   console.log("\n--- Part 2: Defining Constants ---");
 
-  // Method A: TS 'const' passed as Lua global
+  // Method A: TS 'const' passed as Lua global via globals().set()
   const MAX_CONNECTIONS = 500;
-  lua.setGlobal("MAX_CONNECTIONS", MAX_CONNECTIONS);
-  console.log("Constant MAX_CONNECTIONS in Lua:", lua.getGlobal("MAX_CONNECTIONS")); // 500
+  lua.globals().set("MAX_CONNECTIONS", MAX_CONNECTIONS);
+  console.log("Constant MAX_CONNECTIONS in Lua:", lua.globals().get("MAX_CONNECTIONS")); // 500
 
   // Method B: Lua 5.4 local constants using <const>
   const localConstVal = lua.eval(`
@@ -85,7 +85,7 @@ function runGlobalsExample() {
     },
   };
 
-  lua.setGlobal("serverConfig", serverConfig);
+  lua.globals().set("serverConfig", serverConfig);
 
   console.log("serverConfig.host in Lua:", lua.eval("return serverConfig.host")); // "localhost"
   console.log(
@@ -98,7 +98,7 @@ function runGlobalsExample() {
   lua.eval("serverConfig.host = '127.0.0.1'");
   lua.eval("table.insert(serverConfig.ports, 8080)");
 
-  const updatedConfig = lua.getGlobal("serverConfig");
+  const updatedConfig = lua.globals().get("serverConfig");
   console.log("\nUpdated serverConfig retrieved in TS:");
   console.log(JSON.stringify(updatedConfig, null, 2));
 }

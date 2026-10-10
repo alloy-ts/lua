@@ -7,7 +7,7 @@ import { Lua } from "../src/main.ts";
  * Answer:
  * - Functions are defined inside Lua VM by evaluating function statements via `lua.eval()`.
  * - Functions defined globally in Lua VM can be invoked by evaluating function calls in `lua.eval()`.
- * - Inputs can be bound as global variables via `lua.setGlobal(name, value)` before invoking the function.
+ * - Inputs can be bound as global variables via `lua.globals().set(name, value)` before invoking the function.
  * - In NAPI, reading a Lua function value directly into JS returns the placeholder string `"[lua function]"`.
  */
 function runFunctionExample() {
@@ -23,12 +23,12 @@ function runFunctionExample() {
   `);
 
   // 2. Inspecting the function reference in TypeScript
-  const functionRef = lua.getGlobal("greet");
+  const functionRef = lua.globals().get("greet");
   console.log("Retrieved 'greet' global from JS:", functionRef);
   // Output: "[lua function]" (Lua function values are surfaced as a placeholder string in JS)
 
   // 3. Invoking the Lua function from TS by passing parameters via globals or arguments
-  lua.setGlobal("userName", "World");
+  lua.globals().set("userName", "World");
   const greeting = lua.eval("return greet(userName)");
   console.log("Result of greet(userName):", greeting); // "Hello, World from Lua!"
 
@@ -41,9 +41,9 @@ function runFunctionExample() {
     end
   `);
 
-  lua.setGlobal("valA", 10);
-  lua.setGlobal("valB", 20);
-  lua.setGlobal("valC", 30);
+  lua.globals().set("valA", 10);
+  lua.globals().set("valB", 20);
+  lua.globals().set("valC", 30);
 
   const stats = lua.eval("return calculateStats(valA, valB, valC)");
   console.log("Result of calculateStats(10, 20, 30):", stats);
