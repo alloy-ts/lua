@@ -1,6 +1,6 @@
-# Lua 5.4 & Ottavino Language Guide
+# Lua 5.4 & Ottavino Language & Architecture Guide
 
-This guide covers Lua 5.4 basics, its standard library, and the specific capabilities added by **Ottavino** when embedding Lua in TypeScript/JavaScript via NAPI.
+This guide covers Lua 5.4 language features, standard library reference, and the internal VM architecture of **Ottavino** (Piccolo) when embedding Lua in TypeScript/JavaScript via NAPI.
 
 ---
 
@@ -20,11 +20,16 @@ This guide covers Lua 5.4 basics, its standard library, and the specific capabil
   - [Table Library (`table`)](#table-library-table)
   - [Coroutine Library (`coroutine`)](#coroutine-library-coroutine)
   - [I/O Library (`io`)](#io-library-io)
-- [What Ottavino Adds](#what-ottavino-adds)
-  - [1. Pure Rust Implementation](#1-pure-rust-implementation)
-  - [2. Safe Garbage Collection (`gc-arena`)](#2-safe-garbage-collection-gc-arena)
-  - [3. Granular Sandboxing & Stdlib Control](#3-granular-sandboxing--stdlib-control)
-  - [4. Memory & GC Introspection](#4-memory--gc-introspection)
+- [Ottavino VM Architecture & Stackless Design](#ottavino-vm-architecture--stackless-design)
+  - [A "Stackless" Interpreter Design](#a-stackless-interpreter-design)
+  - [Benefits of a Stackless VM](#benefits-of-a-stackless-vm)
+    - [1. Cancellation](#1-cancellation)
+    - [2. Pre-emptive Concurrency](#2-pre-emptive-concurrency)
+    - [3. Fuel, Pacing, and Custom Scheduling](#3-fuel-pacing-and-custom-scheduling)
+    - [4. Symmetric Coroutines (`coroutine.yieldto`)](#4-symmetric-coroutines-coroutineyieldto)
+  - [C-Lua vs. Ottavino Architecture](#c-lua-vs-ottavino-architecture)
+  - [Safe Garbage Collection (`gc-arena`)](#safe-garbage-collection-gc-arena)
+  - [Multi-tenant Sandboxing & Isolation ("Zooming Out")](#multi-tenant-sandboxing--isolation-zooming-out)
 
 ---
 
@@ -69,7 +74,7 @@ Lua 5.4 introduced attribute annotations for local variables:
    ```
 
 2. **To-Be-Closed Variables (`<close>`)**:
-   Automatically calls the `__close` metamethod when the scope exits (similar to `using` in TS or `try-with-resources`).
+   Automatically calls the `__close` metamethod when the scope exits.
    ```lua
    local file <close> = io.open("data.txt", "r")
    -- file is automatically closed when leaving block scope
@@ -161,10 +166,7 @@ print(v:length()) -- 5
 
 ## Lua Standard Library Reference
 
-Lua standard libraries provide built-in functionality organized into core modules:
-
 ### Base Library
-The base library provides essential functions directly in the global environment:
 - `print(...)`: Outputs values to stdout.
 - `type(v)`: Returns the type name of value `v` as a string (`"number"`, `"table"`, etc.).
 - `tostring(v)` / `tonumber(v)`: Converts values to strings or numbers.
@@ -175,7 +177,6 @@ The base library provides essential functions directly in the global environment
 - `rawget(t, k)` / `rawset(t, k, v)`: Accesses table fields without invoking metamethods.
 
 ### Math Library (`math`)
-Standard mathematical operations and constants:
 - `math.abs(x)`, `math.floor(x)`, `math.ceil(x)`, `math.sqrt(x)`
 - `math.max(...)`, `math.min(...)`
 - `math.sin(x)`, `math.cos(x)`, `math.tan(x)`, `math.rad(deg)`, `math.deg(rad)`
@@ -184,61 +185,99 @@ Standard mathematical operations and constants:
 - Constants: `math.pi`, `math.maxinteger`, `math.mininteger`
 
 ### String Library (`string`)
-String manipulation and pattern matching:
 - `string.len(s)`: String byte length.
 - `string.sub(s, i [, j])`: Extract substring.
 - `string.upper(s)` / `string.lower(s)`: Case conversion.
 - `string.rep(s, n)`: Repeat string `n` times.
-- `string.format(formatstring, ...)`: Formatted string construction (C `sprintf` style).
+- `string.format(formatstring, ...)`: Formatted string construction.
 - `string.find(s, pattern)`, `string.match(s, pattern)`: Pattern matching.
 - `string.gsub(s, pattern, repl)`: Global string substitution.
 
 ### Table Library (`table`)
-Utilities for manipulating sequence tables:
 - `table.insert(t, [pos,] value)`: Append or insert element into array table.
 - `table.remove(t [, pos])`: Remove element from array table.
 - `table.concat(t [, sep [, i [, j]]])`: Join string elements with separator.
 - `table.sort(t [, comp])`: Sort array elements in-place.
-- `table.pack(...)` / `table.unpack(t [, i [, j]])`: Pack arguments into a table or unpack table elements into multiple return values.
+- `table.pack(...)` / `table.unpack(t [, i [, j]])`: Pack arguments into a table or unpack table elements.
 
 ### Coroutine Library (`coroutine`)
-Cooperative multitasking and generator creation:
 - `coroutine.create(f)`: Create a new coroutine thread.
 - `coroutine.resume(co [, val1, ...])`: Start or resume execution of coroutine.
 - `coroutine.yield(...)`: Yield execution back to caller.
 - `coroutine.status(co)`: Returns `"running"`, `"suspended"`, `"normal"`, or `"dead"`.
 
 ### I/O Library (`io`)
-Filesystem input and output:
 - `io.open(filename [, mode])`: Open file handle.
 - `io.read(...)`, `io.write(...)`: Read from / write to file stream.
 - `io.lines([filename])`: Iterator over file lines.
 
 ---
 
-## What Ottavino Adds
+## Ottavino VM Architecture & Stackless Design
 
-When running Lua embedded in JavaScript/TypeScript via NAPI, this library utilizes **Ottavino** as its native VM core. Ottavino provides significant advantages over standard C-Lua embeddings:
+### A "Stackless" Interpreter Design
 
-### 1. Pure Rust Implementation
-- **Zero External C Toolchains**: Built entirely in Rust, eliminating C library compilation (`liblua5.4.a`) or system dynamic library dependencies.
-- **Memory Safety**: Completely prevents native C buffer overflows, double frees, or dangling pointer crashes.
+Ottavino is a pure Rust interpreter for Lua 5.4 built around a **stackless** architecture. Unlike traditional C-Lua implementations (PUC-Rio Lua) which rely on the host C call stack to maintain execution state, Ottavino reifies execution state into explicit, heap-allocated Rust data structures.
 
-### 2. Safe Garbage Collection (`gc-arena`)
-- Ottavino uses the `gc-arena` crate to manage GC lifetimes safely within Rust.
-- Ensures that references crossing between JavaScript and Lua cannot corrupt host VM memory.
+Execution in Ottavino is driven from the outside by polling:
 
-### 3. Granular Sandboxing & Stdlib Control
-Standard C-Lua requires manually removing global functions from `_G` to sandbox scripts. Ottavino provides clean, built-in VM constructors for sandboxing:
+```rust
+// Polling loop inside Ottavino
+loop {
+    if executor.step(ctx, &mut fuel) {
+        // Execution finished
+        break;
+    }
+    // Execution suspended — control returns to host
+}
+```
 
-- **`Lua.empty()`**: Creates a completely blank Lua state with 0 standard libraries loaded. Safe for untrusted user code execution.
-- **`Lua.core()`**: Loads core libraries (`math`, `string`, `table`, `coroutine`, `base`) without filesystem or I/O access (`io`).
-- **`Lua.full()`**: Loads all libraries including `io`.
-- **`loadCore()` / `loadIo()`**: Dynamically enable modules on an existing VM instance on demand.
+This design mirrors Rust's `Future::poll` model: execution proceeds incrementally and can be suspended, resumed, or yielded at any instruction boundary.
 
-### 4. Memory & GC Introspection
-Ottavino exposes internal allocator metrics directly to JavaScript/TypeScript:
+---
 
-- **`lua.totalMemory()`**: Query exact memory consumption of the Lua VM state in bytes.
-- **`lua.gcCollect()`**: Programmatically trigger garbage collection from TypeScript.
-- **`lua.gcMetrics()`**: Retrieve allocation debt and total memory statistics via `GcMetrics` (`{ totalAllocation, allocationDebt }`).
+### Benefits of a Stackless VM
+
+#### 1. Cancellation
+Because execution does not hold frames on the native host call stack, a running Lua tasklet can be safely canceled at any point simply by stopping calls to `executor.step()`. Unreachable VM states and allocated structures are cleaned up deterministically by the garbage collector without memory leaks or dangling pointers.
+
+#### 2. Pre-emptive Concurrency
+Standard Lua coroutines provide cooperative multitasking (scripts must explicitly invoke `coroutine.yield()`). In Ottavino, because `Executor::step` executes in bounded time slices governed by fuel, multiple Lua scripts can be multiplexed in a round-robin or custom scheduler to achieve **pre-emptive concurrency** without requiring cooperation from Lua code.
+
+#### 3. Fuel, Pacing, and Custom Scheduling
+Execution progress in Ottavino is governed by a `Fuel` budget. Each call to `Executor::step` consumes fuel proportional to the number of VM instructions executed. This enables:
+- **Burst Pacing**: Allocating fuel quotas per frame to ensure CPU-intensive Lua scripts cannot hang host Node.js event loops.
+- **Resource Sandboxing**: Bounding maximum execution time for untrusted or user-submitted Lua code.
+
+#### 4. Symmetric Coroutines (`coroutine.yieldto`)
+Ottavino supports symmetric coroutine switching (`coroutine.yieldto`), allowing one coroutine to yield directly to another without leaking call stack space or requiring outer C wrapper runners.
+
+---
+
+### C-Lua vs. Ottavino Architecture
+
+Traditional C-Lua implementations rely heavily on C stack frames and `longjmp` for yield/error handling, making nested yields across native callbacks complex (`lua_callk` / `lua_yieldk`). Ottavino avoids native stack dependencies altogether by compiling Lua chunks into pure Rust prototypes and stepping them via explicit executor state machines.
+
+---
+
+### Safe Garbage Collection (`gc-arena`)
+
+Ottavino is built on top of `gc-arena`, a garbage collection library for Rust. `gc-arena` enforces strict separation between mutation and collection cycles:
+- **Mutation Phase**: Access to garbage-collected handles (`Table<'gc>`, `Closure<'gc>`, etc.) occurs safely inside `lua.enter(|ctx| { ... })`.
+- **Collection Phase**: Garbage collection occurs between calls to `enter` or during `Executor::step` polling when no references exist on the host Rust stack.
+
+---
+
+### Multi-tenant Sandboxing & Isolation ("Zooming Out")
+
+In host applications, Ottavino allows creating multiple independent `Lua` VM instances (`Lua.empty()`, `Lua.core()`, `Lua.full()`). Each instance operates in complete isolation with its own garbage-collected heap, global variables, and security boundaries:
+
+```typescript
+import { Lua } from "@lib/module";
+
+// Completely isolated sandbox instances
+const sandboxA = Lua.empty();
+const sandboxB = Lua.full();
+
+sandboxA.loadCore();
+```

@@ -1,17 +1,18 @@
 # Embedded Lua for TypeScript/JavaScript (via NAPI)
 
-Embed a Lua execution environment into TypeScript and JavaScript applications by exporting Lua's C/Rust VM API via NAPI.
+Embed a Lua 5.4 execution environment into TypeScript and JavaScript applications by exporting Lua's C/Rust VM API via NAPI.
 
 This library uses [NAPI-RS](https://napi.rs/) and [Ottavino](https://github.com/kyren/ottavino) (a pure Rust Lua 5.4 VM implementation) to safely expose Lua's API to Node.js and JavaScript environments without external native C dependencies.
 
-## Features
+## Key Features
 
-- **Full Lua Environment**: Create sandboxed Lua states with empty, core, or full standard libraries.
+- **Full Lua 5.4 Environment**: Create sandboxed Lua states with empty, core, or full standard libraries.
+- **Stackless VM Architecture**: Reifies execution state into heap structures driven by polling (`Executor::step`), enabling bounded execution and pre-emptive time slicing.
 - **Eval Lua Code**: Run arbitrary Lua scripts and return JavaScript primitives, objects, and arrays.
-- **Global Variable Binding**: Get and set global variables in the Lua VM directly from JS/TS.
-- **GC & Memory Controls**: Monitor memory consumption (`totalMemory()`) and manually trigger garbage collection (`gcCollect()`).
+- **Global Variable Binding**: Get and set global variables in the Lua VM directly from TS/JS.
+- **GC & Memory Controls**: Monitor memory consumption (`totalMemory()`), inspect allocation metrics (`gcMetrics()`), and manually trigger garbage collection (`gcCollect()`).
 
-## Usage Example
+## Quick Usage Example
 
 ```typescript
 import { Lua } from "@lib/module";
@@ -44,24 +45,34 @@ console.log(`Memory used: ${lua.totalMemory()} bytes`);
 lua.gcCollect();
 ```
 
-## API Reference
+## API Summary
 
-### Constructors
+- `Lua.full()` / `new Lua()`: Creates a VM with full stdlib (including I/O).
+- `Lua.core()`: Creates a VM with core stdlib (no I/O).
+- `Lua.empty()`: Creates an empty VM for strict sandboxing.
+- `lua.eval(code: string): unknown`: Evaluates Lua code and converts return value to TS/JS.
+- `lua.setGlobal(name, value)` / `lua.getGlobal(name)`: Bidirectional variable getter/setter.
+- `lua.loadCore()` / `lua.loadIo()`: Dynamically loads standard library modules.
+- `lua.totalMemory()` / `lua.gcCollect()` / `lua.gcMetrics()`: Memory tracking & GC controls.
 
-- `Lua.full()` or `new Lua()`: Instantiates a Lua VM with the full standard library loaded (base, coroutine, math, string, table, I/O).
-- `Lua.core()`: Instantiates a Lua VM with core standard libraries loaded (no I/O).
-- `Lua.empty()`: Instantiates an empty Lua VM with no standard libraries.
+For detailed documentation, see:
+- [API Reference (`docs/api.md`)](./docs/api.md)
+- [Lua 5.4 & Ottavino Language Guide (`docs/lang-guide.md`)](./docs/lang-guide.md)
 
-### Methods
+## Examples
 
-- `lua.eval(code: string): unknown`: Compiles and executes the given Lua code string, returning the result as a JavaScript value.
-- `lua.setGlobal(name: string, value: unknown): void`: Sets a global variable in the Lua VM environment.
-- `lua.getGlobal(name: string): unknown`: Retrieves a global variable from the Lua VM environment.
-- `lua.loadCore(): void`: Loads core standard libraries into an existing Lua state.
-- `lua.loadIo(): void`: Loads I/O standard libraries into an existing Lua state.
-- `lua.totalMemory(): number`: Returns total memory used by the Lua VM in bytes.
-- `lua.gcCollect(): void`: Triggers a full garbage collection cycle in the Lua VM.
-- `lua.gcMetrics(): GcMetrics`: Returns garbage collector metrics.
+Check the [`examples/`](./examples/) folder for runnable TypeScript examples:
+- [`examples/variables.ts`](./examples/variables.ts): Defining primitive variables, constants, objects, and metatables.
+- [`examples/primitives.ts`](./examples/primitives.ts): Working with numbers, strings, booleans, and nulls.
+- [`examples/object.ts`](./examples/object.ts): Table/object manipulation and OOP patterns.
+- [`examples/function.ts`](./examples/function.ts): Defining and invoking Lua functions.
+- [`examples/memory.ts`](./examples/memory.ts): Memory tracking and garbage collection controls.
+- [`examples/stdlib.ts`](./examples/stdlib.ts): Sandboxing and standard library loading.
+
+Run any example using `@oxc-node/core`:
+```bash
+node --import @oxc-node/core/register examples/variables.ts
+```
 
 ## Development
 
