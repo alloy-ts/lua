@@ -885,17 +885,16 @@ fn js_to_ottavino_value<'gc>(
                     }
                     let func = unsafe { Unknown::from_raw_unchecked(env.raw(), func_val) };
 
-                    let mut js_args: Vec<_> = Vec::new();
-                    {
-                        for v in &stack {
-                            let u = match ottavino_value_to_js(env, ctx, &handles_cb, v) {
-                                Ok(u) => u,
-                                Err(_) => unsafe {
-                                    Unknown::from_raw_unchecked(env.raw(), ptr::null_mut())
-                                },
-                            };
-                            js_args.push(u);
-                        }
+                    let mut js_args: Vec<_> = Vec::with_capacity(stack.len());
+                    for i in 0..stack.len() {
+                        let v = stack.get(i);
+                        let u = match ottavino_value_to_js(env, ctx, &handles_cb, v) {
+                            Ok(u) => u,
+                            Err(_) => unsafe {
+                                Unknown::from_raw_unchecked(env.raw(), ptr::null_mut())
+                            },
+                        };
+                        js_args.push(u);
                     }
 
                     match call_js_function(env, &func, &js_args) {
