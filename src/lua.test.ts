@@ -219,4 +219,22 @@ describe("Lua host callbacks (register)", () => {
     lua.register("calc", (x: number) => x * 10);
     expect(lua.eval("return calc(5)")).toBe(50);
   });
+
+  test("propagates JS errors to Lua pcall", () => {
+    const lua = Lua.full();
+    lua.register("fail", () => {
+      throw new Error("something went wrong");
+    });
+    lua.eval("ok, err = pcall(fail); err_str = tostring(err)");
+    expect(lua.getGlobal("ok")).toBe(false);
+    expect(lua.getGlobal("err_str")).toContain("something went wrong");
+  });
+
+  test("propagates unhandled JS callback errors to host eval", () => {
+    const lua = Lua.full();
+    lua.register("fail", () => {
+      throw new Error("unhandled callback error");
+    });
+    expect(() => lua.eval("fail()")).toThrow(/unhandled callback error/);
+  });
 });

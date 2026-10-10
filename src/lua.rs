@@ -57,6 +57,17 @@ thread_local! {
     static HOST_CALLBACKS: RefCell<Vec<Option<(sys::napi_ref, Env)>>> = RefCell::new(Vec::new());
 }
 
+#[derive(Debug)]
+struct CallbackError(String);
+
+impl std::fmt::Display for CallbackError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl std::error::Error for CallbackError {}
+
 /// Handle to a Lua function (closure or host callback).
 ///
 /// Internally an index into the owning `Lua`'s handle registry.
@@ -555,6 +566,9 @@ impl Lua {
 
         self.inner.enter(|ctx| {
             let callback = Callback::from_fn(ctx.mutation(), move |ctx, _exec, mut stack| {
+                let mut callback_res: Result<CallbackReturn, ottavino::Error> =
+                    Ok(CallbackReturn::Return);
+
                 HOST_CALLBACKS.with(|cell| {
                     let guard = cell.borrow();
                     let Some((func_ref, env)) = guard.get(id as usize).and_then(|o| o.as_ref()) else {
@@ -572,7 +586,10 @@ impl Lua {
                         for v in &stack {
                             let u = match ottavino_value_to_js(env, ctx, &mut *h, v) {
                                 Ok(u) => u,
-                                Err(_) => unsafe { Unknown::from_raw_unchecked(env.raw(), ptr::null_mut()) },
+                                Err(e) => {
+                                    callback_res = Err(ottavino::RuntimeError::from(CallbackError(e.to_string())).into());
+                                    return;
+                                }
                             };
                             js_args.push(u);
                         }
@@ -584,12 +601,17 @@ impl Lua {
                                 stack.clear();
                                 stack.push_back(val);
                             }
-                            Err(_) => stack.clear(),
+                            Err(e) => {
+                                callback_res = Err(ottavino::RuntimeError::from(CallbackError(e.to_string())).into());
+                            }
                         },
-                        Err(_) => stack.clear(),
+                        Err(e) => {
+                            callback_res = Err(ottavino::RuntimeError::from(CallbackError(e.to_string())).into());
+                        }
                     }
                 });
-                Ok(CallbackReturn::Return)
+
+                callback_res
             });
 
             let key = ctx.intern(name.as_bytes());
@@ -983,8 +1005,37 @@ fn call_js_function<'a>(
         unsafe {
             sys::napi_get_and_clear_last_exception(env_raw, &mut exc);
         }
-        Err(NapiError::from_reason(
-            "JS host callback threw an exception",
-        ))
+        let msg = if !exc.is_null() {
+            let mut str_val = ptr::null_mut();
+            if unsafe { sys::napi_coerce_to_string(env_raw, exc, &mut str_val) } == 0 {
+                let mut str_len = 0;
+                unsafe {
+                    sys::napi_get_value_string_utf8(
+                        env_raw,
+                        str_val,
+                        ptr::null_mut(),
+                        0,
+                        &mut str_len,
+                    );
+                }
+                let mut buf = vec![0u8; str_len + 1];
+                unsafe {
+                    sys::napi_get_value_string_utf8(
+                        env_raw,
+                        str_val,
+                        buf.as_mut_ptr() as *mut i8,
+                        buf.len(),
+                        &mut str_len,
+                    );
+                }
+                buf.truncate(str_len);
+                String::from_utf8_lossy(&buf).to_string()
+            } else {
+                "JS host callback threw an exception".to_string()
+            }
+        } else {
+            "JS host callback threw an exception".to_string()
+        };
+        Err(NapiError::from_reason(msg))
     }
 }
