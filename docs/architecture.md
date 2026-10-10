@@ -106,7 +106,18 @@ The `@alloy-ts/lua` NAPI layer exposes the Ottavino VM to TypeScript:
 | NAPI Method / Type                            | Description                                                                |
 | --------------------------------------------- | -------------------------------------------------------------------------- |
 | `Lua.full()`, `core()`, `empty()`             | VM state constructors with configurable stdlib loading.                    |
-| `eval(code)`                                  | Compiles and steps code in the stackless `Executor` to completion.         |
+| `eval(code)`                                  | Compiles source into a `Closure<'gc>` and steps `Executor` to completion.  |
 | `setGlobal(name, val)`                        | Marshals JS values/objects/arrays into Ottavino `Table` and `Value` types. |
 | `getGlobal(name)`                             | Retrieves global `Value` and converts it to JS primitives or objects.      |
 | `totalMemory()`, `gcCollect()`, `gcMetrics()` | Exposes `gc-arena` memory tracking and manual GC invocation to JS.         |
+
+---
+
+## 7. Ottavino `Closure<'gc>` Compilation Model
+
+In Ottavino's Rust API, executable Lua functions are represented by `Closure<'gc>`:
+
+- **`Closure<'gc>`**: A garbage-collected handle to a `FunctionPrototype<'gc>` bound to an environment table (upvalues such as `_ENV`).
+- **`Closure::load(ctx, name, source)`**: Compiles Lua source bytes into a top-level `Closure<'gc>` using the VM's global table as `_ENV`.
+- **`Closure::load_with_env(ctx, name, source, env_table)`**: Compiles Lua source using a custom environment table for strict sandboxing.
+- **`StashedClosure`**: Implements `Stashable<'gc>` to allow references to closures to safely persist across `gc-arena` garbage collection cycles.
