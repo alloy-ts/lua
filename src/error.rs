@@ -1,10 +1,7 @@
 use napi_derive::napi;
-
 use ottavino::{ExternError as OExternError, RuntimeError as ORuntimeError};
 
 /// A shareable, dynamically typed wrapper around a Rust error, safe to hand to JS.
-///
-/// Construct one with [`RuntimeError::from_message`] and later raise it into Lua (TODO above).
 #[napi]
 pub struct RuntimeError {
     inner: ORuntimeError,
@@ -16,7 +13,10 @@ impl RuntimeError {
     #[napi(factory)]
     pub fn from_message(message: String) -> Self {
         RuntimeError {
-            inner: ORuntimeError::new(message),
+            inner: ORuntimeError::new(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                message,
+            )),
         }
     }
 

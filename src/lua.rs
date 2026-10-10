@@ -1,19 +1,11 @@
-use napi::bindgen_prelude::{Buffer, Env, Function, ToNapiValue, Unknown};
-use napi::Error as NapiError;
+use napi::bindgen_prelude::Env;
+use napi::Result as NapiResult;
 use napi_derive::napi;
-
-use ottavino::{Context as OContext, Lua as OLua};
-
-/// Convert any displayable error into a `napi::Error` so `ottavino` error types can cross the
-/// FFI boundary.
-fn to_napi_err<E: std::fmt::Display>(e: E) -> NapiError {
-    NapiError::from_reason(e.to_string())
-}
+use ottavino::{
+    Closure as OClosure, Context as OContext, Executor as OExecutor, Lua as OLua,
+};
 
 /// Snapshot of `ottavino_gc_arena::metrics::Metrics`.
-///
-/// `Lua::gc_metrics` borrows `&Metrics` from the arena, which cannot be returned by reference to
-/// JS, so we copy the numbers we care about into an owned object.
 #[napi(object)]
 pub struct GcMetrics {
     /// Total bytes tracked by the allocator (mirrors `Lua::total_memory`).
@@ -22,7 +14,7 @@ pub struct GcMetrics {
     pub allocation_debt: f64,
 }
 
-/// A Lua execution environment. Top-level `ottavino` type; create one, then `enter` it to run code.
+/// A Lua execution environment. Top-level `ottavino` type; create one, then execute code.
 #[napi]
 pub struct Lua {
     inner: OLua,
@@ -55,8 +47,6 @@ impl Lua {
     }
 
     /// Load the core parts of the stdlib that do not allow performing any I/O.
-    ///
-    /// Calls `load_base`, `load_coroutine`, `load_math`, `load_string`, `load_table`.
     #[napi]
     pub fn load_core(&mut self) {
         self.inner.load_core();
@@ -90,94 +80,70 @@ impl Lua {
         }
     }
 
-    /// Enter the garbage collection arena and run `callback(ctx)`.
-    ///
-    /// `ctx` is a [`Context`] bridge that is only valid synchronously inside `callback`. Any Lua
-    /// values obtained from `ctx` (via `ctx.globals()`, `ctx.intern(...)`, ...) are opaque handles
-    /// that must not be used after `callback` returns.
+    /// Compile and evaluate Lua code, returning the string representation of the result value.
     #[napi]
-    pub fn enter(&mut self, env: Env, callback: Function) -> Result<()> {
-        let mut result: Result<(), NapiError> = Ok(());
-        self.inner.enter(|ctx| {
-            if let Err(e) = Self::run_callback(env, &callback, ctx) {
-                result = Err(e);
-            }
-        });
-        result
-    }
+    pub fn eval(&mut self, env: Env, code: String) -> NapiResult<String> {
+        let mut stashed_executor = None;
+        let mut parse_err = None;
 
-    /// Like [`Lua::enter`], but the closure is allowed to fail. Any JS-side error is captured and
-    /// surfaced as the returned `Result`.
-    ///
-    /// NOTE: The underlying `ottavino::Lua::try_enter` expects the closure to produce an
-    /// `ottavino::Error`. Since our closure only talks to JS (it never produces an `ottavino`
-    /// error directly), this currently behaves like `enter` with respect to error reporting.
-    /// Mapping a JS exception back into an `ottavino::Error` is left as a TODO.
-    #[napi]
-    pub fn try_enter(&mut self, env: Env, callback: Function) -> Result<()> {
-        let mut result: Result<(), NapiError> = Ok(());
-        let _ = self.inner.try_enter(|ctx| {
-            match Self::run_callback(env, &callback, ctx) {
-                Ok(()) => Ok(()),
+        self.inner.enter(|ctx| {
+            match OClosure::load(ctx, Some("eval"), code.as_bytes()) {
+                Ok(closure) => {
+                    let executor = OExecutor::start(ctx, closure.into(), ());
+                    stashed_executor = Some(ctx.stash(executor));
+                }
                 Err(e) => {
-                    result = Err(e);
-                    Ok(())
+                    parse_err = Some(e.to_string());
                 }
             }
         });
-        result
-    }
 
-    /// Run the given executor to completion.
-    ///
-    /// Requires the `StashedExecutor` NAPI handle from `crate::stash`.
-    #[napi]
-    pub fn finish(&mut self, executor: &crate::stash::StashedExecutor) -> Result<()> {
-        self.inner.finish(executor.inner()).map_err(to_napi_err)
-    }
+        if let Some(e) = parse_err {
+            return Err(napi::Error::new(napi::Status::GenericFailure, e));
+        }
 
-    /// Run the given executor to completion and return its first result value.
-    ///
-    /// Requires the `StashedExecutor` NAPI handle from `crate::stash`. Multi-value returns are
-    /// left as a TODO (would need `Vec<Value>` / `Variadic` handling in `crate::value`).
-    #[napi]
-    pub fn execute(
-        &mut self,
-        executor: &crate::stash::StashedExecutor,
-    ) -> Result<crate::value::Value> {
-        let r: ottavino::Value = self
-            .inner
-            .execute::<ottavino::Value>(executor.inner())
-            .map_err(to_napi_err)?;
-        Ok(crate::value::Value::from_ottavino(r))
-    }
+        let stashed_executor = stashed_executor.unwrap();
 
-    /// Internal helper: build a [`Context`] bridge for `ctx`, wrap it as a JS value, and invoke
-    /// the JS callback with it as the single argument.
-    fn run_callback(env: Env, callback: &Function, ctx: OContext) -> Result<(), NapiError> {
-        let bridge = Context::from_raw(ctx);
-        let napi_value = <Context as ToNapiValue>::to_napi_value(env, bridge)
-            .map_err(|e| NapiError::from_reason(e.to_string()))?;
-        let arg = Unknown::from_napi_value(env, napi_value)?;
-        callback.call(None, &[arg])?;
-        Ok(())
+        if let Err(e) = self.inner.finish(&stashed_executor) {
+            return Err(napi::Error::new(napi::Status::GenericFailure, e.to_string()));
+        }
+
+        let mut output = String::new();
+        let mut exec_err = None;
+
+        self.inner.enter(|ctx| {
+            let executor = ctx.fetch(&stashed_executor);
+            match executor.take_result::<ottavino::Value>(ctx) {
+                Ok(Ok(val)) => {
+                    output = val.display().to_string();
+                }
+                Ok(Err(err)) => {
+                    exec_err = Some(err.to_string());
+                }
+                Err(err) => {
+                    exec_err = Some(err.to_string());
+                }
+            }
+        });
+
+        if let Some(e) = exec_err {
+            return Err(napi::Error::new(napi::Status::GenericFailure, e));
+        }
+
+        let _ = env;
+        Ok(output)
     }
 }
 
 /// Erased layout of `ottavino::Context<'gc>` (two `&` references => two pointers).
-///
-/// We transmute `Context<'gc>` <-> `RawCtx` to smuggle the branded lifetime across the FFI
-/// boundary. This is sound **only** for the duration of a single synchronous `enter` callback.
 #[repr(C)]
+#[derive(Clone, Copy)]
 struct RawCtx {
     mutation: *mut (),
     state: *mut (),
 }
 
-/// A bridge object handed to the JS `enter`/`try_enter` callback.
-///
-/// Valid only synchronously inside the callback that received it. The raw pointers are dangling
-/// once the callback returns; do not retain this object (or any value obtained through it) in JS.
+/// A bridge object handed to Lua callbacks or interactions.
 #[napi]
 #[derive(Clone, Copy)]
 pub struct Context {
@@ -186,46 +152,15 @@ pub struct Context {
 
 impl Context {
     /// Erase the `'gc` lifetime and wrap an `ottavino::Context`.
-    fn from_raw<'gc>(ctx: OContext<'gc>) -> Self {
+    #[allow(dead_code)]
+    pub(crate) fn from_raw<'gc>(ctx: OContext<'gc>) -> Self {
         let raw = unsafe { std::mem::transmute::<OContext<'gc>, RawCtx>(ctx) };
         Context { raw }
     }
 
-    /// Recover the `ottavino::Context` (with an arbitrary lifetime). Only call inside the
-    /// originating `enter` callback.
-    fn as_ottavino<'a>(&self) -> OContext<'a> {
+    /// Recover the `ottavino::Context` (with an arbitrary lifetime).
+    #[allow(dead_code)]
+    pub(crate) fn as_ottavino<'a>(&self) -> OContext<'a> {
         unsafe { std::mem::transmute::<RawCtx, OContext<'a>>(self.raw) }
     }
 }
-
-#[napi]
-impl Context {
-    /// The table of global variables.
-    #[napi]
-    pub fn globals(&self) -> crate::table::Table {
-        let ctx = self.as_ottavino();
-        crate::table::Table::from_ottavino(ctx.globals())
-    }
-
-    /// The registry.
-    #[napi]
-    pub fn registry(&self) -> crate::registry::Registry {
-        let ctx = self.as_ottavino();
-        crate::registry::Registry::from_ottavino(ctx.registry())
-    }
-
-    /// Intern a byte slice into an interned `String` handle.
-    #[napi]
-    pub fn intern(&self, data: Buffer) -> crate::string::String {
-        let ctx = self.as_ottavino();
-        crate::string::String::from_ottavino(ctx.intern(&data))
-    }
-}
-
-// TODO(high-level): add a convenience `Lua::run(source: String) -> Value` that compiles `source`
-// via `crate::compiler`, builds a `Thread`/`Executor` in `crate::thread`, and calls `execute`.
-// This would let JS run Lua without manually constructing executors.
-//
-// TODO: `Context::get_global` / `set_global` take a `&'static str` in `ottavino`, so they cannot
-// be driven from a runtime JS string. Use `ctx.globals().get/set(...)` (the `Table` handle) with a
-// `Value` key instead.

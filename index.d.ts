@@ -9,4 +9,54 @@
  */
 export declare const __napiBindingTarget: 'native' | 'wasm32-wasi' | 'wasm32-wasip1'
 
-export declare function add(left: number, right: number): number
+/** A bridge object handed to Lua callbacks or interactions. */
+export declare class Context {}
+
+/** An `enum@Error` that is not bound to the GC context. Safe to hand to JS. */
+export declare class ExternError {
+  /** Human-readable message. */
+  message(): string
+  /** `"lua"` if the error carries a Lua value, or `"runtime"` if it carries a Rust error. */
+  kind(): string
+}
+
+/** Opaque, erased-lifetime handle to an `ottavino::Function<'gc>`. */
+export declare class Function {}
+
+/** A Lua execution environment. Top-level `ottavino` type; create one, then execute code. */
+export declare class Lua {
+  /** Create a `Lua` instance with no parts of the stdlib loaded. */
+  static empty(): Lua
+  /** Create a `Lua` instance with the core (non-I/O) stdlib loaded. */
+  static core(): Lua
+  /** Create a `Lua` instance with the full stdlib (including I/O) loaded. */
+  static full(): Lua
+  /** Load the core parts of the stdlib that do not allow performing any I/O. */
+  loadCore(): void
+  /** Load the parts of the stdlib that allow I/O. */
+  loadIo(): void
+  /** Size of all memory used by this Lua context, in bytes. */
+  totalMemory(): number
+  /** Finish the current collection cycle completely. */
+  gcCollect(): void
+  /** Snapshot of the garbage collector metrics. */
+  gcMetrics(): GcMetrics
+  /** Compile and evaluate Lua code, returning the string representation of the result value. */
+  eval(code: string): NapiResult<string>
+}
+
+/** A shareable, dynamically typed wrapper around a Rust error, safe to hand to JS. */
+export declare class RuntimeError {
+  /** Create a runtime error from a message string. */
+  static fromMessage(message: string): RuntimeError
+  /** Human-readable message (the `Display` of the underlying error). */
+  message(): string
+}
+
+/** Snapshot of `ottavino_gc_arena::metrics::Metrics`. */
+export interface GcMetrics {
+  /** Total bytes tracked by the allocator (mirrors `Lua::total_memory`). */
+  totalAllocation: number
+  /** Current allocation debt; when it exceeds a small constant, `enter` triggers a collection. */
+  allocationDebt: number
+}
