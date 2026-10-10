@@ -1,4 +1,5 @@
 import { describe, expect, test } from "vite-plus/test";
+import { runGlobalsDemo } from "../examples/globals.ts";
 import { runDemo } from "../examples/object.ts";
 import { Lua } from "./main.ts";
 
@@ -198,5 +199,17 @@ describe("examples/object.ts demo", () => {
     expect(player.name).toBe("Aria");
     expect(player.score).toBe(150);
     expect(player.inventory).toEqual(["Staff", "Health Potion", "Mana Potion"]);
+  });
+});
+
+describe("examples/globals.ts demo", () => {
+  test("runGlobalsDemo executes successfully and returns primitive and object results", () => {
+    const res = runGlobalsDemo();
+    expect(res.appName).toBe("Lua Engine");
+    expect(res.maxConn).toBe(100);
+    expect(res.updatedConfig.port).toBe(9090);
+    expect(res.updatedConfig.db.host).toBe("db.internal");
+    expect(res.updatedConfig.tags).toEqual(["primary", "us-east", "ssl"]);
+    expect(res.summary).toBe("production:9090 (db.internal)");
   });
 });
