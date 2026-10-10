@@ -1,6 +1,8 @@
 import { describe, expect, test } from "vite-plus/test";
+import { runCoroutineDemo } from "../examples/coroutine.ts";
 import { runFunctionDemo } from "../examples/function.ts";
 import { runGlobalsDemo } from "../examples/globals.ts";
+import { runMetatableDemo } from "../examples/metatable.ts";
 import { runDemo } from "../examples/object.ts";
 import { Lua } from "./main.ts";
 
@@ -222,5 +224,32 @@ describe("examples/function.ts demo", () => {
     expect(res.funcRef).toBe("[lua function]");
     expect(res.bounds).toEqual({ min: 3, max: 42 });
     expect(res.doubled).toEqual([2, 4, 6, 8, 10]);
+  });
+});
+
+describe("examples/coroutine.ts demo", () => {
+  test("runCoroutineDemo executes successfully and yields step results", () => {
+    const res = runCoroutineDemo();
+    expect(res.step1).toEqual({ ok: true, val: 10 });
+    expect(res.step2).toEqual({ ok: true, val: 15 });
+    expect(res.step3).toEqual({ ok: true, val: 20 });
+    expect(res.status).toBe("dead");
+    expect(res.taskResults).toEqual([
+      "Task A - Step 1",
+      "Task B - Step 1",
+      "Task A - Finished",
+      "Task B - Finished",
+    ]);
+  });
+});
+
+describe("examples/metatable.ts demo", () => {
+  test("runMetatableDemo executes successfully and handles metamethods and OOP", () => {
+    const res = runMetatableDemo();
+    expect(res.v3X).toBe(15);
+    expect(res.v3Y).toBe(35);
+    expect(res.v3Str).toBe("Vector(15, 35)");
+    expect(res.dogSpeak).toBe("Rex makes a woof");
+    expect(res.dogBreed).toBe("German Shepherd");
   });
 });
