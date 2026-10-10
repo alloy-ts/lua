@@ -191,3 +191,39 @@ describe("error handling", () => {
     expect(() => lua.eval("error('boom')")).toThrow(/Lua runtime error/);
   });
 });
+
+describe("host callback registration and execution", () => {
+  test("registers a JS callback with positional arguments and return value", () => {
+    const lua = Lua.full();
+    lua.register("add", (a: number, b: number) => a + b);
+    expect(lua.eval("return add(10, 20)")).toBe(30);
+  });
+
+  test("handles string arguments and return values", () => {
+    const lua = Lua.full();
+    lua.register("greet", (name: string) => `Hello, ${name}!`);
+    expect(lua.eval("return greet('World')")).toBe("Hello, World!");
+  });
+
+  test("propagates JS exception to host eval when not caught in Lua", () => {
+    const lua = Lua.full();
+    lua.register("badFunc", () => {
+      throw new Error("Something went wrong in JS");
+    });
+    expect(() => lua.eval("return badFunc()")).toThrow(/Something went wrong in JS/);
+  });
+
+  test("Lua pcall catches exceptions thrown in JS callbacks", () => {
+    const lua = Lua.full();
+    lua.register("badFunc", () => {
+      throw new Error("Callback failure");
+    });
+    const code = `
+      local ok, err = pcall(badFunc)
+      return err
+    `;
+    const err = lua.eval(code) as string;
+    expect(typeof err).toBe("string");
+    expect(err).toContain("Callback failure");
+  });
+});

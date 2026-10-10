@@ -555,9 +555,11 @@ impl Lua {
 
         self.inner.enter(|ctx| {
             let callback = Callback::from_fn(ctx.mutation(), move |ctx, _exec, mut stack| {
+                let mut cb_err: Option<String> = None;
                 HOST_CALLBACKS.with(|cell| {
                     let guard = cell.borrow();
                     let Some((func_ref, env)) = guard.get(id as usize).and_then(|o| o.as_ref()) else {
+                        cb_err = Some("host callback not found".to_string());
                         return;
                     };
                     let mut func_val = ptr::null_mut();
@@ -572,7 +574,10 @@ impl Lua {
                         for v in &stack {
                             let u = match ottavino_value_to_js(env, ctx, &mut *h, v) {
                                 Ok(u) => u,
-                                Err(_) => unsafe { Unknown::from_raw_unchecked(env.raw(), ptr::null_mut()) },
+                                Err(e) => {
+                                    cb_err = Some(e.to_string());
+                                    return;
+                                }
                             };
                             js_args.push(u);
                         }
@@ -584,11 +589,16 @@ impl Lua {
                                 stack.clear();
                                 stack.push_back(val);
                             }
-                            Err(_) => stack.clear(),
+                            Err(e) => cb_err = Some(e.to_string()),
                         },
-                        Err(_) => stack.clear(),
+                        Err(e) => cb_err = Some(e.to_string()),
                     }
                 });
+
+                if let Some(err_msg) = cb_err {
+                    let s = ctx.intern(err_msg.as_bytes());
+                    return Err(ottavino::Error::from(ottavino::Value::String(s)));
+                }
                 Ok(CallbackReturn::Return)
             });
 
@@ -983,8 +993,15 @@ fn call_js_function<'a>(
         unsafe {
             sys::napi_get_and_clear_last_exception(env_raw, &mut exc);
         }
-        Err(NapiError::from_reason(
-            "JS host callback threw an exception",
-        ))
+        let mut msg = String::from("JS host callback threw an exception");
+        if !exc.is_null() {
+            let mut exc_str_val = ptr::null_mut();
+            if unsafe { sys::napi_coerce_to_string(env_raw, exc, &mut exc_str_val) } == 0 {
+                if let Ok(s) = unsafe { String::from_napi_value(env_raw, exc_str_val) } {
+                    msg = format!("JS host callback error: {s}");
+                }
+            }
+        }
+        Err(NapiError::from_reason(msg))
     }
 }
