@@ -19,31 +19,45 @@ From `dist/index.js` (and `@lib/module`):
 
 Top-level class representing a Lua 5.4 execution environment.
 
-### Static Factory Methods
+### Constructors & Factories
 
-#### `Lua.empty(): Lua`
+- [`Lua.empty(): Lua`](#luaempty-lua)
+- [`Lua.core(): Lua`](#luacore-lua)
+- [`Lua.full(): Lua`](#luafull-lua)
 
-Creates a `Lua` instance with no standard library modules loaded.
+### Methods
 
-#### `Lua.core(): Lua`
-
-Creates a `Lua` instance with core non-I/O standard library modules loaded (`base`, `coroutine`, `math`, `string`, `table`).
-
-#### `Lua.full(): Lua`
-
-Creates a `Lua` instance with the full standard library loaded (including I/O).
+- [Code Execution](#code-execution)
+  - [`lua.eval(code: string): string`](#luaevalcode-string-string)
+- [Global Variable Management](#global-variable-management)
+  - [`lua.setGlobal(key: string, value: string): void`](#luasetglobalkey-string-value-string-void)
+- [Standard Library Management](#standard-library-management)
+  - [`lua.loadCore(): void`](#lualoadcore-void)
+  - [`lua.loadIo(): void`](#lualoadio-void)
+- [Memory & Garbage Collection](#memory--garbage-collection)
+  - [`lua.totalMemory(): number`](#luatotalmemory-number)
+  - [`lua.gcCollect(): void`](#luagccollect-void)
+  - [`lua.gcMetrics(): GcMetrics`](#luagcmetrics-gcmetrics)
 
 ---
 
-### Instance Methods
+### Constructors & Factory Details
 
-#### `lua.setGlobal(key: string, value: string): void`
+#### `Lua.empty(): Lua`
 
-Sets a global variable in the Lua environment.
+Instantiates an empty Lua VM with no standard library modules loaded.
 
-- **Parameters:**
-  - `key` (`string`): Variable name in the global table.
-  - `value` (`string`): String value to assign.
+#### `Lua.core(): Lua`
+
+Instantiates a Lua VM with core non-I/O standard library modules loaded (`base`, `coroutine`, `math`, `string`, `table`).
+
+#### `Lua.full(): Lua`
+
+Instantiates a Lua VM with the full standard library loaded (including I/O).
+
+---
+
+### Method Details
 
 #### `lua.eval(code: string): string`
 
@@ -52,6 +66,14 @@ Compiles and evaluates a Lua code snippet, returning the string representation o
 - **Parameters:**
   - `code` (`string`): The Lua code snippet to compile and run.
 - **Returns:** `string` — Display string of the returned value (`"nil"` if no value is returned).
+
+#### `lua.setGlobal(key: string, value: string): void`
+
+Sets a global variable in the Lua environment.
+
+- **Parameters:**
+  - `key` (`string`): Variable name in the global table.
+  - `value` (`string`): String value to assign.
 
 #### `lua.loadCore(): void`
 
@@ -63,15 +85,15 @@ Loads I/O standard library modules into an existing `Lua` instance.
 
 #### `lua.totalMemory(): number`
 
-Returns the total memory used by this Lua environment in bytes.
+Returns total memory used by the Lua VM in bytes.
 
 #### `lua.gcCollect(): void`
 
-Runs a full garbage collection cycle.
+Triggers a full garbage collection cycle in the Lua VM.
 
 #### `lua.gcMetrics(): GcMetrics`
 
-Returns a snapshot of the current garbage collection metrics.
+Returns garbage collector metrics (`totalAllocation`, `allocationDebt`).
 
 ```typescript
 interface GcMetrics {

@@ -1,54 +1,55 @@
-# Ottavino Architecture & NAPI Bindings Overview
+# Ottavino Architecture Overview
 
-This document provides an overview of the architecture of the underlying `ottavino` Lua VM, its stackless design, and how its capabilities are exposed to TypeScript and JavaScript via NAPI-RS bindings.
-
----
-
-## The Stackless Interpreter Architecture
-
-`ottavino` is an embedded Lua 5.4 interpreter written in pure Rust using `gc-arena` for garbage collection. Rather than relying on the native C or Rust function call stack, `ottavino` employs a **stackless (trampoline-based)** interpreter design.
-
-### Key Architectural Concepts
-
-1. **Stackless VM Execution**
-   - In `ottavino`, execution state is reified into an `Executor` struct inside `gc-arena`.
-   - The VM does not recurse on the Rust stack during nested Lua function or callback calls. Instead, execution is driven by repeatedly stepping the executor (`Executor::step`).
-
-2. **Fuel and Bounded Stepping**
-   - Every VM step consumes a unit of **fuel**.
-   - `Executor::step` runs VM instructions until its fuel limit is reached, ensuring that execution always returns in bounded time.
-   - This prevents infinite loops in untrusted Lua code from freezing the host process.
-
-3. **Garbage Collection (`gc-arena`)**
-   - Memory management uses tracing garbage collection via `gc-arena`.
-   - `gc-arena` uses a **Mutation XOR Collection** rule: garbage collection takes place between stepping calls when no Rust pointers are borrowed inside the arena.
-
-4. **Coroutines & Symmetric `coroutine.yieldto`**
-   - Lua coroutines (`coroutine.create`, `coroutine.resume`, `coroutine.yield`) are supported.
-   - Because of the stackless trampoline design, `ottavino` also supports symmetric coroutine transfers via `coroutine.yieldto(targetThread)`, yielding directly from one thread to another without accumulating stack frames.
+This document provides a detailed technical overview of `ottavino` (the pure-Rust Lua 5.4 VM) and how its stackless interpreter design is exposed via NAPI-RS bindings.
 
 ---
 
-## Covered NAPI Bindings
+## 1. Stackless Interpreter Design
 
-Our native module exports NAPI bindings in `src/lua.rs` that wrap `ottavino` for Node.js / TypeScript.
+`ottavino` is an interpreter for Lua 5.4 written in pure, mostly safe Rust. It uses `gc-arena` for tracing garbage collection.
 
-### 1. Environment Factories
+### Why "Stackless"?
 
-- `Lua.empty()`: Instantiates an environment without standard library modules.
-- `Lua.core()`: Instantiates an environment with core non-I/O modules (`base`, `coroutine`, `math`, `string`, `table`).
-- `Lua.full()`: Instantiates an environment with all standard library modules loaded (including I/O).
+In traditional interpreter designs, calling a Lua function from C/Rust uses native stack frames on the host system call stack. If a nested call occurs (Host -> Lua -> Host -> Lua), suspending or yielding execution is difficult because native stack frames cannot be trivially serialized or yielded.
 
-### 2. Variable & State Injection
+`ottavino` employs a **stackless (trampoline-based)** design:
 
-- `lua.setGlobal(key, value)`: Interns key and value strings into the Lua global table environment (`ctx.globals()`).
+- The VM execution state, stack frames, upvalues, and registers are reified into heap-allocated Rust structs inside `gc-arena`.
+- Execution is driven from the outside by stepping the executor (`Executor::step`).
+- No native call stack frames are retained during VM steps, allowing computation to be suspended, resumed, or garbage collected between steps.
 
-### 3. Expression Evaluation
+---
 
-- `lua.eval(code)`: Compiles the source string into a top-level closure (`Closure::load`), creates an `Executor`, steps it to completion (`Lua::finish`), and extracts the result value (`take_result`).
+## 2. Fuel, Pacing, and Bounded Stepping
 
-### 4. Memory & Garbage Collection Management
+To ensure safe sandboxing and resiliency against infinite loops in untrusted Lua code:
 
-- `lua.totalMemory()`: Returns current memory allocated in bytes (`total_memory`).
-- `lua.gcCollect()`: Triggers a complete garbage collection cycle (`gc_collect`).
-- `lua.gcMetrics()`: Returns allocator total bytes and allocation debt (`gc_metrics`).
+- `ottavino` uses a **Fuel** counter.
+- Every VM step consumes fuel.
+- `Executor::step` returns as soon as fuel is exhausted, giving full pacing and scheduling control back to the host environment (Node.js / TypeScript).
+
+---
+
+## 3. Coroutines and Multitasking
+
+- Lua 5.4 coroutines (`coroutine.create`, `coroutine.resume`, `coroutine.yield`) are supported.
+- Because execution state is stackless, coroutines can yield and resume cooperatively without native call stack limits.
+
+---
+
+## 4. API Coverage Summary: `ottavino` vs. Exported NAPI Bindings
+
+The table below outlines the underlying `ottavino` Crate API capabilities and their corresponding NAPI bindings exported to JavaScript/TypeScript:
+
+| `ottavino` Rust API                   | NAPI Exported JS/TS API   | Status & Description                                                                          |
+| ------------------------------------- | ------------------------- | --------------------------------------------------------------------------------------------- |
+| `Lua::empty()`                        | `Lua.empty()`             | ✅ Instantiates an empty Lua VM without stdlib                                                |
+| `Lua::core()`                         | `Lua.core()`              | ✅ Instantiates a Lua VM with non-I/O stdlib (`base`, `coroutine`, `math`, `string`, `table`) |
+| `Lua::full()`                         | `Lua.full()`              | ✅ Instantiates a Lua VM with full stdlib (including `io`)                                    |
+| `Lua::load_core()`                    | `lua.loadCore()`          | ✅ Dynamically loads core stdlib into state                                                   |
+| `Lua::load_io()`                      | `lua.loadIo()`            | ✅ Dynamically loads I/O stdlib into state                                                    |
+| `Lua::total_memory()`                 | `lua.totalMemory()`       | ✅ Returns memory allocated by VM in bytes                                                    |
+| `Lua::gc_collect()`                   | `lua.gcCollect()`         | ✅ Triggers a full garbage collection cycle                                                   |
+| `Lua::gc_metrics()`                   | `lua.gcMetrics()`         | ✅ Returns `GcMetrics` (`totalAllocation`, `allocationDebt`)                                  |
+| `Context::globals().set()`            | `lua.setGlobal(key, val)` | ✅ Injects global string variables into Lua environment                                       |
+| `Closure::load` + `Executor::execute` | `lua.eval(code)`          | ✅ Compiles and evaluates Lua code, returning result string or throwing JS error              |
