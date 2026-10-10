@@ -20,6 +20,7 @@ The `@alloy-ts/lua` package provides a high-performance JavaScript/TypeScript in
   - [`StepResult`](#stepresult)
   - [`GcMetrics`](#gcmetrics)
 - [Value Conversion Rules](#value-conversion-rules)
+- [Error & Exception Handling](#error--exception-handling)
 
 ---
 
@@ -66,6 +67,7 @@ The `Lua` class represents an isolated Lua VM state.
 
 #### `lua.eval(code: string): unknown`
 - Compiles and executes the given Lua code string, returning converted JS result.
+- **Throws**: JavaScript `Error` on compile or runtime errors.
 
 ---
 
@@ -141,3 +143,13 @@ export interface GcMetrics {
   allocationDebt: number;
 }
 ```
+
+---
+
+## Error & Exception Handling
+
+When an error occurs during Lua evaluation:
+- **Lua Compile (Syntax) Errors**: Throws a NAPI JavaScript `Error` prefixed with `"Lua compile error:"`.
+- **Lua Runtime Errors**: Explicit calls to `error('msg')` or type errors in Lua throw a NAPI JavaScript `Error` prefixed with `"Lua runtime error:"`.
+- **Catching in JS/TS**: Can be caught using standard JS `try/catch` blocks.
+- **Catching in Lua**: Errors inside Lua code can be trapped using Lua's built-in `pcall(fn, args...)` function.

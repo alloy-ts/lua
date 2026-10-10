@@ -61,6 +61,7 @@ We provide several runnable TypeScript example scripts in the `examples/` direct
 - [`examples/object.ts`](examples/object.ts) — Defining and manipulating Lua objects (tables) and arrays from JS/TS objects.
 - [`examples/function.ts`](examples/function.ts) — Defining and calling Lua functions, higher-order functions, and closures.
 - [`examples/async.ts`](examples/async.ts) — Using Lua coroutines and integrating them with JS Promises/async workflows.
+- [`examples/error.ts`](examples/error.ts) — Handling compile and runtime exceptions across TS and Lua using try/catch and `pcall`.
 - [`examples/memory.ts`](examples/memory.ts) — Inspecting memory allocation and triggering garbage collection.
 - [`examples/stdlib.ts`](examples/stdlib.ts) — Standard library sandboxing with `Lua.empty()`, `Lua.core()`, `Lua.full()`, `loadCore()`, and `loadIo()`.
 
@@ -71,6 +72,7 @@ node --import @oxc-node/core/register examples/primitives.ts
 node --import @oxc-node/core/register examples/object.ts
 node --import @oxc-node/core/register examples/function.ts
 node --import @oxc-node/core/register examples/async.ts
+node --import @oxc-node/core/register examples/error.ts
 node --import @oxc-node/core/register examples/memory.ts
 node --import @oxc-node/core/register examples/stdlib.ts
 ```
@@ -88,6 +90,8 @@ node --import @oxc-node/core/register examples/stdlib.ts
 - `lua.eval(code: string): unknown`: Executes Lua code and returns converted JS values.
 - `lua.setGlobal(name: string, value: unknown): void`: Sets a global variable in the Lua VM.
 - `lua.getGlobal(name: string): unknown`: Retrieves a global variable from the Lua VM.
+- `lua.executor(code: string): LuaExecutor`: Creates a fuel step-driven VM executor wrapper.
+- `lua.createThread(codeOrFnName: string): LuaThread`: Creates a suspended Lua coroutine thread handle.
 - `lua.loadCore(): void`: Loads core standard libraries into an existing instance.
 - `lua.loadIo(): void`: Loads I/O standard libraries into an existing instance.
 - `lua.totalMemory(): number`: Returns memory used by the Lua VM in bytes.
