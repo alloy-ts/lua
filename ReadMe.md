@@ -6,7 +6,9 @@ This module provides TypeScript/JavaScript bindings for embedding and executing 
 
 - **Full Lua Environment**: Run Lua scripts with standard library capabilities.
 - **High Performance**: Native Rust binding using NAPI-RS for minimal overhead.
-- **Seamless JS Interop**: Evaluate Lua expressions and receive converted JavaScript primitive types (`number`, `string`, `boolean`, `undefined`/`nil`).
+- **Seamless JS Interop**: Evaluate Lua expressions and pass TS primitives and structured objects to Lua tables.
+- **Memory & GC Control**: Monitor VM memory usage and trigger manual GC.
+- **API Documentation**: Detailed API reference available in [docs/api.md](./docs/api.md).
 
 ## Installation / Setup
 
@@ -17,7 +19,7 @@ npm install
 npm run build
 ```
 
-## Usage Example
+## Usage Examples
 
 ### Simple Evaluation with `evalLua`
 
@@ -31,21 +33,43 @@ const message = evalLua('return "Hello from " .. "Lua!"');
 console.log(message); // Output: Hello from Lua!
 ```
 
-### Using the `Lua` Class
+### Using the `Lua` Class with `setGlobal`
 
 ```typescript
 import { Lua } from "./src/main.ts";
 
 const lua = Lua.full();
 
-// Evaluate expressions
-const result = lua.eval("return math.sqrt(16) * 2");
-console.log(result); // Output: 8
+// Set primitive globals
+lua.setGlobal("MAX_ITEMS", 100);
 
-// Evaluate scripts
-lua.eval('x = 42');
-const x = lua.eval('return x');
-console.log(x); // Output: 42
+// Set TS object as a Lua table
+lua.setGlobal("config", {
+  port: 8080,
+  host: "localhost",
+});
+
+// Evaluate expressions using set globals
+const result = lua.eval("return config.host .. ':' .. tostring(config.port)");
+console.log(result); // Output: localhost:8080
+```
+
+## Examples Directory
+
+Check out executable TypeScript examples in the `examples/` directory:
+
+- `examples/primitives.ts` — Setting primitive variables and constants
+- `examples/object.ts` — Passing structured JS objects to Lua tables
+- `examples/globals.ts` — Comprehensive global variable management
+- `examples/function.ts` — Defining and calling Lua functions
+- `examples/coroutines.ts` — Generator patterns with Lua coroutines
+- `examples/memory.ts` — Memory tracking and manual GC
+- `examples/stdlib.ts` — Sandboxing and stdlib loading
+
+Run any example with `npx tsx`:
+
+```bash
+npx tsx examples/globals.ts
 ```
 
 ## Development & Testing
