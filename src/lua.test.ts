@@ -258,3 +258,21 @@ describe("Coroutine / Thread API", () => {
     expect(res).toEqual({ ok: true, val: 30 });
   });
 });
+
+describe("Ottavino Callback via globals().set", () => {
+  test("wraps JS functions in Callback::from_fn and handles Stack parameters & returns", () => {
+    const lua = Lua.full();
+    lua.globals().set("hostAdd", (a: number, b: number) => a + b);
+
+    const res = lua.eval("return hostAdd(15, 27)");
+    expect(res).toBe(42);
+  });
+
+  test("supports string arguments and string return values", () => {
+    const lua = Lua.full();
+    lua.globals().set("greet", (name: string) => `Hello, ${name}!`);
+
+    const res = lua.eval("return greet('World')");
+    expect(res).toBe("Hello, World!");
+  });
+});
