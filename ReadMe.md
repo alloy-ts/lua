@@ -8,6 +8,11 @@ This library uses [NAPI-RS](https://napi.rs/) and
 implementation) to safely expose Lua's API to Node.js and JavaScript
 environments without external native C dependencies.
 
+## Documentation
+
+- [API Reference](docs/api.md) — Detailed class constructor, method, and value conversion documentation.
+- [Lua 5.4 Language & Stdlib Guide](docs/lang-guide.md) — Lua language overview, standard library modules, and Ottavino VM features.
+
 ## Features
 
 - **Full Lua Environment**: Create sandboxed Lua states with empty, core, or
@@ -50,6 +55,24 @@ console.log(arrayResult); // [10, 20, 30]
 // Check memory usage and trigger garbage collection
 console.log(`Memory used: ${lua.totalMemory()} bytes`);
 lua.gcCollect();
+```
+
+## Runnable Examples
+
+The `examples/` directory contains runnable TypeScript scripts demonstrating various features:
+
+- [`examples/primitives.ts`](examples/primitives.ts) — TS primitives, variables, and read-only constants in Lua.
+- [`examples/object.ts`](examples/object.ts) — TS objects and arrays mapped to Lua tables.
+- [`examples/variables.ts`](examples/variables.ts) — Merged global variable and object handling guide.
+- [`examples/function.ts`](examples/function.ts) — Defining, calling, and inspecting Lua functions.
+- [`examples/coroutine.ts`](examples/coroutine.ts) — Cooperative concurrency using Lua coroutines.
+- [`examples/memory.ts`](examples/memory.ts) — Memory usage tracking and manual GC controls.
+- [`examples/stdlib.ts`](examples/stdlib.ts) — Standard library sandboxing (`empty`, `core`, `full`, `loadCore`, `loadIo`).
+
+Run any example script directly using `@oxc-node/core`:
+
+```bash
+node --import @oxc-node/core/register examples/variables.ts
 ```
 
 ## API Reference
