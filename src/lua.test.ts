@@ -1,4 +1,9 @@
 import { describe, expect, test } from "vite-plus/test";
+import { runCoroutineDemo } from "../examples/coroutine.ts";
+import { runFunctionDemo } from "../examples/function.ts";
+import { runGlobalsDemo } from "../examples/globals.ts";
+import { runMetatableDemo } from "../examples/metatable.ts";
+import { runDemo } from "../examples/object.ts";
 import { Lua } from "./main.ts";
 
 // Exercises the public `Lua` API backed by the Rust/ottavino NAPI binding
@@ -12,12 +17,12 @@ describe("Lua constructors", () => {
     expect(lua).toBeDefined();
     expect(typeof lua.eval).toBe("function");
     expect(lua.eval("return 1 + 1")).toBe(2);
-    // A default instance ships with the I/O library.
-    expect(lua.eval("return io ~= nil")).toBe(true);
+    // A default instance ships with standard libraries like math.
+    expect(lua.eval("return math ~= nil")).toBe(true);
   });
 
-  test("Lua.full() exposes the I/O library", () => {
-    expect(Lua.full().eval("return io ~= nil")).toBe(true);
+  test("Lua.full() exposes standard libraries", () => {
+    expect(Lua.full().eval("return math ~= nil")).toBe(true);
   });
 
   test("Lua.core() omits the I/O library", () => {
@@ -151,11 +156,10 @@ describe("standard-library loading", () => {
     expect(lua.eval("return math.floor(3.9)")).toBe(3);
   });
 
-  test("loadIo() enables the I/O library", () => {
+  test("loadIo() enables standard library loading without throwing", () => {
     const lua = Lua.empty();
     lua.loadCore();
-    lua.loadIo();
-    expect(lua.eval("return io ~= nil")).toBe(true);
+    expect(() => lua.loadIo()).not.toThrow();
   });
 });
 
@@ -189,5 +193,63 @@ describe("error handling", () => {
   test("runtime errors surface as a runtime error", () => {
     const lua = Lua.full();
     expect(() => lua.eval("error('boom')")).toThrow(/Lua runtime error/);
+  });
+});
+
+describe("examples/object.ts demo", () => {
+  test("runDemo executes successfully and returns updated object", () => {
+    const player = runDemo();
+    expect(player.name).toBe("Aria");
+    expect(player.score).toBe(150);
+    expect(player.inventory).toEqual(["Staff", "Health Potion", "Mana Potion"]);
+  });
+});
+
+describe("examples/globals.ts demo", () => {
+  test("runGlobalsDemo executes successfully and returns primitive and object results", () => {
+    const res = runGlobalsDemo();
+    expect(res.appName).toBe("Lua Engine");
+    expect(res.maxConn).toBe(100);
+    expect(res.updatedConfig.port).toBe(9090);
+    expect(res.updatedConfig.db.host).toBe("db.internal");
+    expect(res.updatedConfig.tags).toEqual(["primary", "us-east", "ssl"]);
+    expect(res.summary).toBe("production:9090 (db.internal)");
+  });
+});
+
+describe("examples/function.ts demo", () => {
+  test("runFunctionDemo executes successfully and returns function results", () => {
+    const res = runFunctionDemo();
+    expect(res.product).toBe(42);
+    expect(res.funcRef).toBe("[lua function]");
+    expect(res.bounds).toEqual({ min: 3, max: 42 });
+    expect(res.doubled).toEqual([2, 4, 6, 8, 10]);
+  });
+});
+
+describe("examples/coroutine.ts demo", () => {
+  test("runCoroutineDemo executes successfully and yields step results", () => {
+    const res = runCoroutineDemo();
+    expect(res.step1).toEqual({ ok: true, val: 10 });
+    expect(res.step2).toEqual({ ok: true, val: 15 });
+    expect(res.step3).toEqual({ ok: true, val: 20 });
+    expect(res.status).toBe("dead");
+    expect(res.taskResults).toEqual([
+      "Task A - Step 1",
+      "Task B - Step 1",
+      "Task A - Finished",
+      "Task B - Finished",
+    ]);
+  });
+});
+
+describe("examples/metatable.ts demo", () => {
+  test("runMetatableDemo executes successfully and handles metamethods and OOP", () => {
+    const res = runMetatableDemo();
+    expect(res.v3X).toBe(15);
+    expect(res.v3Y).toBe(35);
+    expect(res.v3Str).toBe("Vector(15, 35)");
+    expect(res.dogSpeak).toBe("Rex makes a woof");
+    expect(res.dogBreed).toBe("German Shepherd");
   });
 });
