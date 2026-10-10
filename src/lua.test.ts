@@ -275,4 +275,19 @@ describe("Ottavino Callback via globals().set", () => {
     const res = lua.eval("return greet('World')");
     expect(res).toBe("Hello, World!");
   });
+
+  test("catches JS errors in callbacks and propagates to Lua pcall/xpcall", () => {
+    const lua = Lua.full();
+    lua.globals().set("throwError", () => {
+      throw new Error("JS host error!");
+    });
+
+    const res = lua.eval(`
+      local ok, err = pcall(throwError)
+      return { ok = ok, err = err }
+    `) as { ok: boolean; err: string };
+
+    expect(res.ok).toBe(false);
+    expect(res.err).toContain("JS host error!");
+  });
 });
