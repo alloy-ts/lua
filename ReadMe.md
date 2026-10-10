@@ -54,29 +54,24 @@ lua.gcCollect();
 
 ## API Reference
 
-### Constructors
+See [docs/api.md](docs/api.md) for full detailed API documentation.
 
-- `Lua.full()` or `new Lua()`: Instantiates a Lua VM with the full standard
-  library loaded (base, coroutine, math, string, table, I/O).
-- `Lua.core()`: Instantiates a Lua VM with core standard libraries loaded (no
-  I/O).
-- `Lua.empty()`: Instantiates an empty Lua VM with no standard libraries.
+### Exported Class: `Lua`
 
-### Methods
+- **`Lua.full()` or `new Lua()`**: Instantiates a Lua VM with standard libraries loaded (base, coroutine, math, string, table).
+- **`Lua.core()`**: Instantiates a Lua VM with core standard libraries loaded.
+- **`Lua.empty()`**: Instantiates an empty Lua VM with no standard libraries pre-loaded.
 
-- `lua.eval(code: string): unknown`: Compiles and executes the given Lua code
-  string, returning the result as a JavaScript value.
-- `lua.setGlobal(name: string, value: unknown): void`: Sets a global variable in
-  the Lua VM environment.
-- `lua.getGlobal(name: string): unknown`: Retrieves a global variable from the
-  Lua VM environment.
-- `lua.loadCore(): void`: Loads core standard libraries into an existing Lua
-  state.
-- `lua.loadIo(): void`: Loads I/O standard libraries into an existing Lua state.
-- `lua.totalMemory(): number`: Returns total memory used by the Lua VM in bytes.
-- `lua.gcCollect(): void`: Triggers a full garbage collection cycle in the Lua
-  VM.
-- `lua.gcMetrics(): GcMetrics`: Returns garbage collector metrics.
+### Key Methods
+
+- **`lua.eval(code: string): unknown`**: Compiles and executes the given Lua code string, returning the result converted to JavaScript values.
+- **`lua.setGlobal(name: string, value: unknown): void`**: Sets a global variable in the Lua VM environment from JS primitives, objects, or arrays.
+- **`lua.getGlobal(name: string): unknown`**: Retrieves a global variable from the Lua VM environment.
+- **`lua.loadCore(): void`**: Loads core standard libraries into an existing Lua state.
+- **`lua.loadIo(): void`**: Loads I/O standard library definitions into an existing Lua state.
+- **`lua.totalMemory(): number`**: Returns total memory used by the Lua VM in bytes.
+- **`lua.gcCollect(): void`**: Triggers a full garbage collection cycle in the Lua VM.
+- **`lua.gcMetrics(): GcMetrics`**: Returns garbage collector metrics.
 
 ### Value Conversion
 
