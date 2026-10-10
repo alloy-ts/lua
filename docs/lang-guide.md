@@ -125,24 +125,48 @@ File operations and standard input/output streams:
 [Ottavino](https://github.com/kyren/ottavino) (a fork of Piccolo) is a pure-Rust, garbage-collected implementation of the Lua 5.4 VM. It introduces key architectural innovations that distinguish it from classical C Lua implementations.
 
 ### A "Stackless" Interpreter Design
-Standard C Lua implementations (like PUC-Rio Lua) rely on the C function call stack (`luaV_execute`, `lua_call`). This makes yielding from inside C callbacks difficult, as yielding across C frames relies on `longjmp`, which destroys stack frames.
 
-In contrast, Ottavino utilizes a **"stackless" (trampoline style) VM loop**. Execution state is reified into VM objects polled by step loops. Control flow always returns back to the step executor.
+Standard C Lua implementations (like PUC-Rio Lua) rely on the native C function call stack (`luaV_execute`, `lua_call`). This makes yielding from inside C callbacks difficult, as yielding across C frames relies on `longjmp`, which destroys stack frames.
+
+In contrast, Ottavino utilizes a **"stackless" (trampoline style) VM loop**. Execution state is reified into VM objects polled by step loops (`Executor::step`). Control flow always returns back to the step executor.
+
+```rust
+// Pseudocode for stackless polling in Ottavino
+loop {
+    if executor.step(ctx, &mut fuel) {
+        break; // Execution completed
+    }
+    // Execution suspended boundedly; safe to run GC or yield
+}
+```
 
 ### Key Benefits of the Stackless Design
 
-#### 1. Bounded Execution & Cancellation
-Because the interpreter runs via polling loops, execution can be canceled at bounded instruction boundaries ("fuel") without corrupting VM state or destroying native C stacks.
+#### 1. Cancellation
+Because execution is polled step-by-step rather than taking over the thread stack, running scripts can be safely canceled at bounded instruction boundaries by dropping the executor, without unhandled stack unwinding or memory corruption.
 
 #### 2. Pre-emptive Concurrency & Tasklets
 Multiple Lua execution instances ("tasklets") can be multiplexed in round-robin fashion by polling each executor for a slice of "fuel". This achieves pre-emptive multitasking across Lua scripts without requiring scripts to cooperatively yield.
 
 #### 3. Fuel, Pacing, and Custom Scheduling
-Execution is paced using a `Fuel` budget. Host environments can allocate fuel quotas (e.g. per frame or per second) to limit CPU consumption by untrusted or looping Lua scripts.
+Execution is paced using a `Fuel` budget. Host environments can allocate fuel quotas (e.g., per frame or per second) to limit CPU consumption by untrusted or looping Lua scripts.
 
-#### 4. Symmetric Coroutines and `coroutine.yieldto`
+#### 4. "Symmetric" Coroutines and `coroutine.yieldto`
 Standard Lua coroutines are asymmetric (they yield only to their caller). Attempting to yield directly to another coroutine in standard C Lua causes stack frame accumulation (stack leak).
+
 Because Ottavino's control flow is trampoline-based, it natively provides **symmetric coroutines** via `coroutine.yieldto(target_co, ...)`—enabling direct tail-yielding between coroutines without stack leaks.
 
+```lua
+-- Symmetric tail-yield between coroutines in Ottavino
+coroutine.yieldto(other_coroutine, arg1, arg2)
+```
+
 ### The "Big Lie": C Lua vs. Ottavino
+
 In C Lua, yielding from nested C callbacks requires rewriting code with continuation functions (`lua_callk` / `lua_yieldk`), which is notoriously difficult to write safely due to `longjmp` stack unwinding. Ottavino solves this at the VM architecture level by managing all state through `gc-arena` ("Mutation XOR Collection" safe garbage collection) without C stack dependencies.
+
+### Rust Coroutines, Lua Coroutines, and Snarfing
+
+In programming language theory, **snarfing** refers to incorporating features from a host language directly into an embedded language implementation.
+
+Standard C Lua cannot easily snarf stack constructs from C because C lacks native coroutines. In contrast, Ottavino's design uses `gc-arena` mutation arenas (`Context<'gc>`) to manage GC pointers safely on the heap rather than relying on host thread stack frames. This makes Lua execution in `@alloy-ts/lua` completely isolated, safe, and thread-resilient.

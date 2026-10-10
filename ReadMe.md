@@ -5,22 +5,24 @@
 
 This library uses [NAPI-RS](https://napi.rs/) and
 [Ottavino](https://github.com/kyren/ottavino) (a pure Rust Lua 5.4 VM
-implementation) to safely expose Lua's API to Node.js and JavaScript
+implementation derived from Piccolo and `gc-arena`) to safely expose Lua's API to Node.js and JavaScript
 environments without external native C dependencies.
 
 ## Documentation
 
 - [API Reference](docs/api.md) — Detailed class constructor, method, and value conversion documentation.
-- [Lua 5.4 Language & Stdlib Guide](docs/lang-guide.md) — Lua language overview, standard library modules, and Ottavino VM features.
+- [Lua 5.4 Language & Stdlib Guide](docs/lang-guide.md) — Lua language overview, standard library modules, and Ottavino VM stackless architecture (`fuel`, cancellation, `coroutine.yieldto`).
 
 ## Features
 
 - **Full Lua Environment**: Create sandboxed Lua states with empty, core, or
   full standard libraries.
+- **Pure Rust Stackless VM**: Powered by Ottavino/Piccolo trampoline execution loop with `gc-arena` memory safety and zero external C dependencies.
 - **Eval Lua Code**: Run arbitrary Lua scripts and return JavaScript primitives,
   objects, and arrays.
 - **Global Variable Binding**: Get and set global variables in the Lua VM
   directly from JS/TS.
+- **Symmetric Coroutines**: Supports direct tail-yielding via `coroutine.yieldto(co, ...)` without stack leaks.
 - **GC & Memory Controls**: Monitor memory consumption (`totalMemory()`) and
   manually trigger garbage collection (`gcCollect()`).
 

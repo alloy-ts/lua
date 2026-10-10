@@ -8,15 +8,32 @@ import { Lua } from "@alloy-ts/lua";
 
 ---
 
-## API Coverage Summary
+## Ottavino Crate API vs. NAPI Binding Coverage
 
-Every public method exposed by the native Ottavino binding is fully mapped into TypeScript:
+Ottavino is structured around internal Rust types:
+* **`Lua`**: Top-level VM instance managing the garbage collection arena (`gc-arena`).
+* **`Context<'gc>`**: Execution context providing access to global variables, string interner, registry, and GC arena mutations.
+* **`Value<'gc>`**: Enums representing all Lua values (`Nil`, `Boolean`, `Integer`, `Number`, `String`, `Table`, `Function`, `Thread`, `UserData`).
+* **`Executor<'gc>`**: Stackless execution state polled with `Fuel` budgets.
+* **`Function<'gc>`**: Enums for closures (`Closure`) and callbacks (`Callback`).
+* **`Table<'gc>`**: Associative arrays and metatables.
+* **`Thread<'gc>`**: Cooperative coroutine threads.
 
-* **Constructors & Factories**: `new Lua()`, `Lua.full()`, `Lua.core()`, `Lua.empty()`
-* **Code Execution**: `lua.eval(code)`
-* **Global Variable Management**: `lua.setGlobal(name, value)`, `lua.getGlobal(name)`
-* **Standard Library Management**: `lua.loadCore()`, `lua.loadIo()`
-* **Memory & Garbage Collection**: `lua.totalMemory()`, `lua.gcCollect()`, `lua.gcMetrics()`
+The JavaScript/TypeScript wrapper `@alloy-ts/lua` exposes all high-level safe API operations of Ottavino via NAPI bindings:
+
+| Ottavino Crate API | NAPI Class / Method | Description |
+| --- | --- | --- |
+| `Lua::full()` / `Lua::default()` | `new Lua()` / `Lua.full()` | Instantiates VM with full stdlib (base, coroutine, math, string, table, I/O). |
+| `Lua::core()` | `Lua.core()` | Instantiates VM with core stdlib (no I/O). |
+| `Lua::empty()` | `Lua.empty()` | Instantiates empty bare VM without stdlib. |
+| `Closure::load` + `Executor::start` + `execute` | `lua.eval(code)` | Compiles, executes Lua code, and converts values to JS primitives/objects. |
+| `ctx.globals().get_raw()` + `ottavino_value_to_js` | `lua.getGlobal(name)` | Retrieves global variable by name from Lua VM. |
+| `js_to_ottavino_value` + `ctx.globals().set()` | `lua.setGlobal(name, value)` | Sets global variable in Lua VM from JS primitive/object/array. |
+| `Lua::load_core()` | `lua.loadCore()` | Dynamically loads core standard libraries into VM. |
+| `Lua::load_io()` | `lua.loadIo()` | Dynamically loads I/O standard library into VM. |
+| `Lua::total_memory()` | `lua.totalMemory()` | Queries total allocated memory tracked by `gc-arena` in bytes. |
+| `Lua::gc_collect()` | `lua.gcCollect()` | Triggers a full garbage collection cycle. |
+| `Lua::gc_metrics()` | `lua.gcMetrics()` | Returns snapshot of GC allocation debt and total allocation metrics. |
 
 ---
 
