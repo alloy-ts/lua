@@ -52,12 +52,14 @@ console.log(result); // 7
 const greeting = lua.eval("return 'Hello, ' .. 'Lua!'");
 console.log(greeting); // "Hello, Lua!"
 
-// Set global variables from JS/TS
-lua.setGlobal("multiplier", 10);
-lua.setGlobal("data", { name: "Lua", active: true });
+// Set global variables or JS callbacks via the Globals API
+lua.globals().set("multiplier", 10);
+lua.globals().set("data", { name: "Lua", active: true });
+lua.globals().set("add", (a: number, b: number) => a + b);
 
 // Read global variables and use them in Lua code
-console.log(lua.getGlobal("multiplier")); // 10
+console.log(lua.globals().get("multiplier")); // 10
+console.log(lua.eval("return add(5, 5)")); // 10
 const calculated = lua.eval("return data.name .. ' x' .. multiplier");
 console.log(calculated); // "Lua x10"
 
@@ -86,12 +88,11 @@ lua.gcCollect();
 
 ### Methods
 
+- `lua.globals(): Globals`: Accesses global environment variables (`_ENV`), providing `globals.get(name)` and `globals.set(name, value)`.
 - `lua.eval(code: string): unknown`: Compiles and executes the given Lua code
   string, returning the result as a JavaScript value.
-- `lua.setGlobal(name: string, value: unknown): void`: Sets a global variable in
-  the Lua VM environment.
-- `lua.getGlobal(name: string): unknown`: Retrieves a global variable from the
-  Lua VM environment.
+- `lua.setGlobal(name: string, value: unknown): void`: Convenience shortcut for `lua.globals().set(name, value)`.
+- `lua.getGlobal(name: string): unknown`: Convenience shortcut for `lua.globals().get(name)`.
 - `lua.loadCore(): void`: Loads core standard libraries into an existing Lua
   state.
 - `lua.loadIo(): void`: Loads I/O standard libraries into an existing Lua state.

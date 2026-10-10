@@ -99,7 +99,7 @@ describe("Lua.eval - value conversion", () => {
   });
 });
 
-describe("global variables", () => {
+describe("global variables & Globals API", () => {
   test("setGlobal / getGlobal round-trip scalars", () => {
     const lua = Lua.full();
     lua.setGlobal("num", 10);
@@ -109,6 +109,17 @@ describe("global variables", () => {
     expect(lua.getGlobal("num")).toBe(10);
     expect(lua.getGlobal("str")).toBe("hi");
     expect(lua.getGlobal("flag")).toBe(true);
+  });
+
+  test("lua.globals().get / set mirror Ottavino Globals API", () => {
+    const lua = Lua.full();
+    const globals = lua.globals();
+    globals.set("host", "127.0.0.1");
+    globals.set("port", 8080);
+
+    expect(globals.get("host")).toBe("127.0.0.1");
+    expect(globals.get("port")).toBe(8080);
+    expect(lua.eval("return host .. ':' .. port")).toBe("127.0.0.1:8080");
   });
 
   test("globals set from JS are visible to later eval calls", () => {
@@ -138,6 +149,33 @@ describe("global variables", () => {
   test("an unset global returns undefined", () => {
     const lua = Lua.full();
     expect(lua.getGlobal("does_not_exist")).toBeUndefined();
+  });
+});
+
+describe("JS Function Callbacks in Lua", () => {
+  test("registers JS function as callable Ottavino Callback in Lua", () => {
+    const lua = Lua.full();
+    lua.globals().set("add", (a: number, b: number) => a + b);
+    expect(lua.eval("return add(15, 27)")).toBe(42);
+  });
+
+  test("handles object and array arguments in JS callback", () => {
+    const lua = Lua.full();
+    lua.setGlobal("processUser", (user: { name: string; score: number }) => {
+      return `User ${user.name} scored ${user.score * 2}`;
+    });
+
+    const result = lua.eval("return processUser({ name = 'Alice', score = 50 })");
+    expect(result).toBe("User Alice scored 100");
+  });
+
+  test("propagates JS errors during callback execution into Lua runtime errors", () => {
+    const lua = Lua.full();
+    lua.setGlobal("failFunc", () => {
+      throw new Error("JS host callback failed!");
+    });
+
+    expect(() => lua.eval("failFunc()")).toThrow(/JS host callback failed!/);
   });
 });
 
