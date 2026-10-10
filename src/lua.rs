@@ -76,10 +76,17 @@ impl Lua {
                 .globals()
                 .get_raw(ottavino::Value::String(ctx.intern(b"print")));
             let key = ctx.intern(b"io");
-            let table = ottavino::Table::new(&ctx);
+            let io_val = ctx.globals().get_raw(ottavino::Value::String(key));
+            let table = match io_val {
+                ottavino::Value::Table(t) => t,
+                _ => {
+                    let new_t = ottavino::Table::new(&ctx);
+                    let _ = ctx.globals().set(ctx, key, new_t);
+                    new_t
+                }
+            };
             let write_key = ctx.intern(b"write");
             let _ = table.set(ctx, write_key, print_val);
-            let _ = ctx.globals().set(ctx, key, table);
         });
     }
 
