@@ -115,17 +115,16 @@ impl Executor {
         env: &'js Env,
         lua: &mut Lua,
     ) -> Result<Unknown<'js>, NapiError> {
-        let mut eval_result: Result<Unknown<'js>, NapiError> = Err(NapiError::from_reason(
-            "Result already taken or execution not complete",
-        ));
+        let mut eval_result: Result<Unknown<'js>, NapiError> =
+            Err(NapiError::from_reason("Result already taken or execution not complete"));
 
         let mut lua_guard = lua
             .inner
             .lock()
             .map_err(|e| NapiError::from_reason(e.to_string()))?;
 
-        lua_guard.enter(
-            |ctx| match ctx.fetch(&self.stashed).take_result::<ottavino::Value>(ctx) {
+        lua_guard.enter(|ctx| {
+            match ctx.fetch(&self.stashed).take_result::<ottavino::Value>(ctx) {
                 Ok(Ok(val)) => {
                     eval_result = ottavino_value_to_js(env, ctx, val);
                 }
@@ -137,8 +136,8 @@ impl Executor {
                         "Lua execution error: {err}"
                     )));
                 }
-            },
-        );
+            }
+        });
 
         eval_result
     }
@@ -260,8 +259,8 @@ impl Lua {
         let mut stashed_opt = None;
         let mut compile_err = None;
 
-        lua.enter(
-            |ctx| match ottavino::Closure::load(ctx, Some("eval"), code.as_bytes()) {
+        lua.enter(|ctx| {
+            match ottavino::Closure::load(ctx, Some("eval"), code.as_bytes()) {
                 Ok(closure) => {
                     let executor = ottavino::Executor::start(ctx, closure.into(), ());
                     stashed_opt = Some(ctx.stash(executor));
@@ -269,8 +268,8 @@ impl Lua {
                 Err(err) => {
                     compile_err = Some(format!("Lua compile error: {err}"));
                 }
-            },
-        );
+            }
+        });
 
         if let Some(err) = compile_err {
             return Err(NapiError::from_reason(err));
@@ -285,8 +284,8 @@ impl Lua {
         let mut eval_result: Result<Unknown<'js>, NapiError> =
             Err(NapiError::from_reason("Execution failed"));
 
-        lua.enter(
-            |ctx| match ctx.fetch(&stashed).take_result::<ottavino::Value>(ctx) {
+        lua.enter(|ctx| {
+            match ctx.fetch(&stashed).take_result::<ottavino::Value>(ctx) {
                 Ok(Ok(val)) => {
                     eval_result = ottavino_value_to_js(env, ctx, val);
                 }
@@ -298,8 +297,8 @@ impl Lua {
                         "Lua execution error: {err}"
                     )));
                 }
-            },
-        );
+            }
+        });
 
         eval_result
     }
@@ -315,8 +314,8 @@ impl Lua {
         let mut stashed_opt = None;
         let mut compile_err = None;
 
-        lua.enter(
-            |ctx| match ottavino::Closure::load(ctx, Some("executor"), code.as_bytes()) {
+        lua.enter(|ctx| {
+            match ottavino::Closure::load(ctx, Some("executor"), code.as_bytes()) {
                 Ok(closure) => {
                     let executor = ottavino::Executor::start(ctx, closure.into(), ());
                     stashed_opt = Some(ctx.stash(executor));
@@ -324,8 +323,8 @@ impl Lua {
                 Err(err) => {
                     compile_err = Some(format!("Lua compile error: {err}"));
                 }
-            },
-        );
+            }
+        });
 
         if let Some(err) = compile_err {
             return Err(NapiError::from_reason(err));
@@ -414,7 +413,9 @@ fn ottavino_value_to_js<'js, 'gc>(
             let mut js_obj = Object::new(env)?;
             for (k, v) in t.iter() {
                 let k_str = match k {
-                    ottavino::Value::String(s) => String::from_utf8_lossy(s.as_bytes()).to_string(),
+                    ottavino::Value::String(s) => {
+                        String::from_utf8_lossy(s.as_bytes()).to_string()
+                    }
                     ottavino::Value::Integer(i) => i.to_string(),
                     ottavino::Value::Number(n) => n.to_string(),
                     _ => continue,
@@ -472,45 +473,84 @@ fn js_to_ottavino_value<'gc>(
                 unsafe {
                     napi::sys::napi_get_reference_value(env_raw, safe_ref.0, &mut raw_fn);
                 }
-                if !raw_fn.is_null() {
-                    let len = stack.len();
-                    let mut js_args = Vec::with_capacity(len);
-                    for i in 0..len {
-                        let arg_val = stack.get(i);
-                        let env_ref = Env::from_raw(env_raw);
-                        if let Ok(js_arg) = ottavino_value_to_js(&env_ref, ctx, arg_val) {
-                            js_args.push(js_arg.raw());
-                        }
-                    }
+                if raw_fn.is_null() {
+                    stack.clear();
+                    return Ok(ottavino::CallbackReturn::Return);
+                }
 
-                    let mut raw_undefined = std::ptr::null_mut();
+                let len = stack.len();
+                let mut js_args = Vec::with_capacity(len);
+                for i in 0..len {
+                    let arg_val = stack.get(i);
+                    let env_ref = Env::from_raw(env_raw);
+                    if let Ok(js_arg) = ottavino_value_to_js(&env_ref, ctx, arg_val) {
+                        js_args.push(js_arg.raw());
+                    }
+                }
+
+                let mut raw_undefined = std::ptr::null_mut();
+                unsafe {
+                    napi::sys::napi_get_undefined(env_raw, &mut raw_undefined);
+                }
+
+                let mut js_result = std::ptr::null_mut();
+                let status = unsafe {
+                    napi::sys::napi_call_function(
+                        env_raw,
+                        raw_undefined,
+                        raw_fn,
+                        js_args.len(),
+                        js_args.as_ptr(),
+                        &mut js_result,
+                    )
+                };
+
+                if status != napi::sys::Status::napi_ok {
+                    let mut is_exception = false;
                     unsafe {
-                        napi::sys::napi_get_undefined(env_raw, &mut raw_undefined);
+                        napi::sys::napi_is_exception_pending(env_raw, &mut is_exception);
                     }
-
-                    let mut js_result = std::ptr::null_mut();
-                    let status = unsafe {
-                        napi::sys::napi_call_function(
-                            env_raw,
-                            raw_undefined,
-                            raw_fn,
-                            js_args.len(),
-                            js_args.as_ptr(),
-                            &mut js_result,
-                        )
+                    let err_msg = if is_exception {
+                        let mut exception_val = std::ptr::null_mut();
+                        unsafe {
+                            napi::sys::napi_get_and_clear_last_exception(
+                                env_raw,
+                                &mut exception_val,
+                            );
+                        }
+                        let _env_ref = Env::from_raw(env_raw);
+                        let unk = unsafe { Unknown::from_raw_unchecked(env_raw, exception_val) };
+                        if let Ok(str_val) = unk.coerce_to_string() {
+                            if let Ok(s) = str_val.into_utf8() {
+                                if let Ok(msg) = s.as_str() {
+                                    format!("JavaScript error in callback: {msg}")
+                                } else {
+                                    "JavaScript error in callback".to_string()
+                                }
+                            } else {
+                                "JavaScript error in callback".to_string()
+                            }
+                        } else {
+                            "JavaScript error in callback".to_string()
+                        }
+                    } else {
+                        "JavaScript callback execution error".to_string()
                     };
 
                     stack.clear();
+                    return Err(ottavino::Error::Runtime(ottavino::RuntimeError::new(
+                        std::io::Error::other(err_msg),
+                    )));
+                }
 
-                    if status == napi::sys::Status::napi_ok && !js_result.is_null() {
-                        let env_ref = Env::from_raw(env_raw);
-                        let unk = unsafe { Unknown::from_raw_unchecked(env_raw, js_result) };
-                        if let Ok(lua_ret) = js_to_ottavino_value(&env_ref, ctx, unk) {
-                            stack.push_back(lua_ret);
-                        }
+                stack.clear();
+
+                if !js_result.is_null() {
+                    let env_ref = Env::from_raw(env_raw);
+                    let unk = unsafe { Unknown::from_raw_unchecked(env_raw, js_result) };
+                    if let Ok(lua_ret) = js_to_ottavino_value(&env_ref, ctx, unk) {
+                        stack.push_back(lua_ret);
                     }
-                } else {
-                    stack.clear();
                 }
 
                 Ok(ottavino::CallbackReturn::Return)
