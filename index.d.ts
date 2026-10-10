@@ -9,6 +9,17 @@
  */
 export declare const __napiBindingTarget: 'native' | 'wasm32-wasi' | 'wasm32-wasip1'
 
+/** An execution handle for stepping and polling Lua execution. */
+export declare class Executor {
+  /**
+   * Step the execution by consuming up to `fuel` units.
+   * Returns `true` if execution is complete, or `false` if more fuel is needed.
+   */
+  step(lua: Lua, fuel: number): boolean
+  /** Retrieve the execution result as a JavaScript value once `step()` returns `true`. */
+  takeResult(lua: Lua): unknown
+}
+
 /** A Lua execution environment exported to JavaScript/TypeScript via NAPI. */
 export declare class Lua {
   /** Create a new `Lua` instance with the full stdlib loaded. */
@@ -31,10 +42,14 @@ export declare class Lua {
   gcMetrics(): GcMetrics
   /** Evaluate Lua code string and return the result as a JavaScript value. */
   eval(code: string): unknown
+  /** Create an `Executor` handle to step through Lua script execution with fuel budgets. */
+  executor(code: string): Executor
   /** Get a global variable from Lua environment by name. */
   getGlobal(name: string): unknown
   /** Set a global variable in Lua environment by name. */
   setGlobal(name: string, value: unknown): void
+  /** Register a JavaScript function as a global Callback in Lua. */
+  registerCallback(name: string, callback: (...args: any[]) => any): void
 }
 
 /** Snapshot of GC metrics. */

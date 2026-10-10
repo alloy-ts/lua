@@ -1,4 +1,8 @@
-use napi::bindgen_prelude::{Env, FromNapiValue, JsObjectValue, Object, ToNapiValue, ValueType};
+use std::sync::Arc;
+
+use napi::bindgen_prelude::{
+    Env, FromNapiValue, Function as NapiFunction, JsObjectValue, Object, ToNapiValue, ValueType,
+};
 use napi::{Error as NapiError, JsValue, Unknown};
 use napi_derive::napi;
 
@@ -13,10 +17,71 @@ pub struct GcMetrics {
     pub allocation_debt: f64,
 }
 
+/// An execution handle for stepping and polling Lua execution.
+#[napi]
+pub struct Executor {
+    stashed: ottavino::StashedExecutor,
+    is_done: bool,
+}
+
+#[napi]
+impl Executor {
+    /// Step the execution by consuming up to `fuel` units.
+    /// Returns `true` if execution is complete, or `false` if more fuel is needed.
+    #[napi]
+    pub fn step(&mut self, lua: &mut Lua, fuel: f64) -> Result<bool, NapiError> {
+        if self.is_done {
+            return Ok(true);
+        }
+
+        let mut f = ottavino::Fuel::with(fuel as i32);
+        let finished = lua
+            .inner
+            .enter(|ctx| ctx.fetch(&self.stashed).step(ctx, &mut f))
+            .map_err(|e| NapiError::from_reason(format!("Lua step error: {e}")))?;
+
+        if finished {
+            self.is_done = true;
+        }
+
+        Ok(finished)
+    }
+
+    /// Retrieve the execution result as a JavaScript value once `step()` returns `true`.
+    #[napi]
+    pub fn take_result<'js>(
+        &mut self,
+        env: &'js Env,
+        lua: &mut Lua,
+    ) -> Result<Unknown<'js>, NapiError> {
+        let mut eval_result: Result<Unknown<'js>, NapiError> = Err(NapiError::from_reason(
+            "Result already taken or execution not complete",
+        ));
+
+        lua.inner.enter(
+            |ctx| match ctx.fetch(&self.stashed).take_result::<ottavino::Value>(ctx) {
+                Ok(Ok(val)) => {
+                    eval_result = ottavino_value_to_js(env, ctx, val);
+                }
+                Ok(Err(err)) => {
+                    eval_result = Err(NapiError::from_reason(format!("Lua runtime error: {err}")));
+                }
+                Err(err) => {
+                    eval_result = Err(NapiError::from_reason(format!(
+                        "Lua execution error: {err}"
+                    )));
+                }
+            },
+        );
+
+        eval_result
+    }
+}
+
 /// A Lua execution environment exported to JavaScript/TypeScript via NAPI.
 #[napi]
 pub struct Lua {
-    inner: OLua,
+    pub(crate) inner: OLua,
 }
 
 #[napi]
@@ -112,7 +177,7 @@ impl Lua {
         let stashed = stashed_opt.unwrap();
 
         if let Err(e) = self.inner.finish(&stashed) {
-            return Err(NapiError::from_reason(format!("Lua finish error: {e}")));
+            return Err(NapiError::from_reason(format!("Lua execution error: {e}")));
         }
 
         let mut eval_result: Result<Unknown<'js>, NapiError> =
@@ -135,6 +200,34 @@ impl Lua {
         );
 
         eval_result
+    }
+
+    /// Create an `Executor` handle to step through Lua script execution with fuel budgets.
+    #[napi]
+    pub fn executor(&mut self, code: String) -> Result<Executor, NapiError> {
+        let mut stashed_opt = None;
+        let mut compile_err = None;
+
+        self.inner.enter(|ctx| {
+            match ottavino::Closure::load(ctx, Some("executor"), code.as_bytes()) {
+                Ok(closure) => {
+                    let executor = ottavino::Executor::start(ctx, closure.into(), ());
+                    stashed_opt = Some(ctx.stash(executor));
+                }
+                Err(err) => {
+                    compile_err = Some(format!("Lua compile error: {err}"));
+                }
+            }
+        });
+
+        if let Some(err) = compile_err {
+            return Err(NapiError::from_reason(err));
+        }
+
+        Ok(Executor {
+            stashed: stashed_opt.unwrap(),
+            is_done: false,
+        })
     }
 
     /// Get a global variable from Lua environment by name.
@@ -177,6 +270,36 @@ impl Lua {
             });
 
         set_result
+    }
+
+    /// Register a JavaScript function as a global Callback in Lua.
+    #[napi]
+    pub fn register_callback<'js>(
+        &mut self,
+        env: &'js Env,
+        name: String,
+        callback: NapiFunction<'js>,
+    ) -> Result<(), NapiError> {
+        let mut raw_ref = std::ptr::null_mut();
+        unsafe {
+            napi::sys::napi_create_reference(env.raw(), callback.raw(), 1, &mut raw_ref);
+        }
+        #[allow(dead_code)]
+        struct SafeRef(napi::sys::napi_ref);
+        unsafe impl Send for SafeRef {}
+        unsafe impl Sync for SafeRef {}
+
+        let safe_ref = Arc::new(SafeRef(raw_ref));
+
+        self.inner.enter(|ctx| {
+            let cb = ottavino::Callback::from_fn(&ctx, move |_ctx, _exec, _stack| {
+                let _ref = safe_ref.clone();
+                Ok(ottavino::CallbackReturn::Return)
+            });
+            let key = ctx.intern(name.as_bytes());
+            let _ = ctx.globals().set(ctx, key, cb);
+        });
+        Ok(())
     }
 }
 

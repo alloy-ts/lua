@@ -8,7 +8,8 @@ This library uses [NAPI-RS](https://napi.rs/) and [Ottavino](https://github.com/
 
 - **Full Lua 5.4 Environment**: Create sandboxed Lua states with empty, core, or full standard libraries.
 - **Stackless VM Architecture**: Reifies execution state into heap structures driven by polling (`Executor::step`), enabling bounded execution and pre-emptive time slicing.
-- **Eval Lua Code**: Run arbitrary Lua scripts and return JavaScript primitives, objects, and arrays.
+- **Eval & Step Execution**: Run scripts synchronously with `eval()` or step through execution using `lua.executor()` with `Fuel` budgets.
+- **JS Callback Registration**: Expose host JS functions into Lua using `lua.registerCallback()`.
 - **Global Variable Binding**: Get and set global variables in the Lua VM directly from TS/JS.
 - **GC & Memory Controls**: Monitor memory consumption (`totalMemory()`), inspect allocation metrics (`gcMetrics()`), and manually trigger garbage collection (`gcCollect()`).
 
@@ -24,25 +25,18 @@ const lua = Lua.full();
 const result = lua.eval("return 1 + 2 * 3");
 console.log(result); // 7
 
-const greeting = lua.eval("return 'Hello, ' .. 'Lua!'");
-console.log(greeting); // "Hello, Lua!"
+// Register a JS callback in Lua
+lua.registerCallback("hostLog", () => {
+  console.log("Logged from Lua!");
+});
+lua.eval("hostLog()");
 
-// Set global variables from JS/TS
-lua.setGlobal("multiplier", 10);
-lua.setGlobal("data", { name: "Lua", active: true });
-
-// Read global variables and use them in Lua code
-console.log(lua.getGlobal("multiplier")); // 10
-const calculated = lua.eval("return data.name .. ' x' .. multiplier");
-console.log(calculated); // "Lua x10"
-
-// Working with Lua tables (returned as JS objects or arrays)
-const arrayResult = lua.eval("return { 10, 20, 30 }");
-console.log(arrayResult); // [10, 20, 30]
-
-// Check memory usage and trigger garbage collection
-console.log(`Memory used: ${lua.totalMemory()} bytes`);
-lua.gcCollect();
+// Step-driven execution with fuel budget
+const executor = lua.executor("local sum = 0; for i = 1, 100 do sum = sum + i end; return sum");
+while (!executor.step(lua, 50)) {
+  // polling...
+}
+console.log("Executor result:", executor.takeResult(lua)); // 5050
 ```
 
 ## API Summary
@@ -51,8 +45,9 @@ lua.gcCollect();
 - `Lua.core()`: Creates a VM with core stdlib (no I/O).
 - `Lua.empty()`: Creates an empty VM for strict sandboxing.
 - `lua.eval(code: string): unknown`: Evaluates Lua code and converts return value to TS/JS.
+- `lua.executor(code: string): Executor`: Returns a step-driven `Executor` handle.
+- `lua.registerCallback(name, callback)`: Registers a JS host function in Lua.
 - `lua.setGlobal(name, value)` / `lua.getGlobal(name)`: Bidirectional variable getter/setter.
-- `lua.loadCore()` / `lua.loadIo()`: Dynamically loads standard library modules.
 - `lua.totalMemory()` / `lua.gcCollect()` / `lua.gcMetrics()`: Memory tracking & GC controls.
 
 For detailed documentation, see:
@@ -66,12 +61,14 @@ Check the [`examples/`](./examples/) folder for runnable TypeScript examples:
 - [`examples/primitives.ts`](./examples/primitives.ts): Working with numbers, strings, booleans, and nulls.
 - [`examples/object.ts`](./examples/object.ts): Table/object manipulation and OOP patterns.
 - [`examples/function.ts`](./examples/function.ts): Defining and invoking Lua functions.
+- [`examples/executor.ts`](./examples/executor.ts): Step-driven execution and fuel polling with `Executor`.
+- [`examples/callback.ts`](./examples/callback.ts): Registering JS host functions as Lua callbacks.
 - [`examples/memory.ts`](./examples/memory.ts): Memory tracking and garbage collection controls.
 - [`examples/stdlib.ts`](./examples/stdlib.ts): Sandboxing and standard library loading.
 
 Run any example using `@oxc-node/core`:
 ```bash
-node --import @oxc-node/core/register examples/variables.ts
+node --import @oxc-node/core/register examples/executor.ts
 ```
 
 ## Development
