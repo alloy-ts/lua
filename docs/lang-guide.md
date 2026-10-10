@@ -1,6 +1,6 @@
-# Lua 5.4 Language & Ottavino VM Guide
+# Lua 5.4 Language & Ottavino (Piccolo) VM Guide
 
-This guide covers the basics of Lua 5.4, its standard libraries, and the specific behavior and features provided by **Ottavino** (the pure Rust Lua 5.4 VM powering `@alloy-ts/lua`).
+This guide covers the basics of Lua 5.4, its standard libraries, and the underlying architecture, features, and capabilities provided by **Ottavino** (the pure Rust Lua 5.4 VM based on **Piccolo**, powering `@alloy-ts/lua`).
 
 ---
 
@@ -21,11 +21,17 @@ This guide covers the basics of Lua 5.4, its standard libraries, and the specifi
   - [Table Library (`table`)](#table-library-table)
   - [Coroutine Library (`coroutine`)](#coroutine-library-coroutine)
   - [I/O Library (`io`)](#io-library-io)
-- [3. What Ottavino Adds & VM Characteristics](#3-what-ottavino-adds--vm-characteristics)
-  - [Pure Rust VM Implementation](#pure-rust-vm-implementation)
-  - [Arena Memory Allocation & GC](#arena-memory-allocation--gc)
+- [3. Deep Dive: Ottavino / Piccolo Architecture & Features](#3-deep-dive-ottavino--piccolo-architecture--features)
+  - [A "Stackless" Interpreter Design](#a-stackless-interpreter-design)
+  - [Benefits of Stackless Architecture](#benefits-of-stackless-architecture)
+    - [1. Cancellation](#1-cancellation)
+    - [2. Pre-emptive Concurrency & Tasklets](#2-pre-emptive-concurrency--tasklets)
+    - [3. Fuel, Pacing, and Custom Scheduling](#3-fuel-pacing-and-custom-scheduling)
+    - [4. "Symmetric" Coroutines and `coroutine.yieldto`](#4-symmetric-coroutines-and-coroutineyieldto)
+  - [The "Big Lie" (Comparison with PUC-Rio C-Lua & `lua_callk`)](#the-big-lie-comparison-with-puc-rio-c-lua--lua_callk)
+  - [Rust Coroutines, Lua Coroutines, and Snarfing](#rust-coroutines-lua-coroutines-and-snarfing)
+  - [Arena Memory Allocation & GC (`gc-arena`)](#arena-memory-allocation--gc-gc-arena)
   - [Sandboxing & Modular Library Loading](#sandboxing--modular-library-loading)
-  - [Omitted Modules & Differences from C-Lua](#omitted-modules--differences-from-c-lua)
 
 ---
 
@@ -188,6 +194,7 @@ Utilities for array-style sequential tables:
 Cooperative thread management:
 - `coroutine.create(f)`, `coroutine.resume(co [, val1, ...])`, `coroutine.yield(...)`
 - `coroutine.status(co)`, `coroutine.running()`, `coroutine.wrap(f)`
+- **`coroutine.yieldto(co, ...)`**: *Unique to Ottavino/Piccolo!* Performs symmetric coroutine yields without leaking stack space.
 
 ### I/O Library (`io`)
 Basic file I/O streams:
@@ -195,27 +202,86 @@ Basic file I/O streams:
 
 ---
 
-## 3. What Ottavino Adds & VM Characteristics
+## 3. Deep Dive: Ottavino / Piccolo Architecture & Features
 
-**Ottavino** is a pure Rust reimplementation of the Lua 5.4 Virtual Machine (`kyren/ottavino`). It powers `@alloy-ts/lua`.
+**Ottavino** is a pure Rust reimplementation of the Lua 5.4 Virtual Machine (`kyren/ottavino`, built on **Piccolo**). It powers `@alloy-ts/lua`.
 
-### Pure Rust VM Implementation
-- **Zero Native C Dependencies**: Unlike standard Lua (written in C) or LuaJIT, Ottavino is written entirely in Rust.
-- **Safety**: Memory safety guarantees provided by Rust without potential memory leaks or segmentation faults from C library bindings.
+### A "Stackless" Interpreter Design
 
-### Arena Memory Allocation & GC
-- **`gc-arena` Garbage Collection**: Ottavino uses an explicit, safe arena-based garbage collector written in Rust.
-- **Memory Inspection API**: Exposes exact memory metrics and controls to JavaScript (`totalMemory()`, `gcCollect()`, `gcMetrics()`).
+In standard PUC-Rio Lua (and C implementations), evaluating Lua code relies on the host C call stack. When Lua calls a C function, which calls a Lua function, which yields, the C stack frames must remain alive or be unwound.
+
+Ottavino/Piccolo uses a **stackless** (or trampoline) VM architecture:
+- Execution state is reified into an explicit `Executor` struct on the heap rather than relying on the host Rust/C call stack.
+- Long-running execution is driven externally through polling (`Executor::step`).
+- At any point between step evaluations, execution can be paused, suspended, or interrupted.
+
+### Benefits of Stackless Architecture
+
+#### 1. Cancellation
+Because execution is driven by polling from the host, an infinite loop in untrusted Lua code (`while true do end`) does not lock up the host application or native call stack. The host caller can simply stop polling `Executor::step` or drop the executor.
+
+#### 2. Pre-emptive Concurrency & Tasklets
+Standard Lua coroutines are cooperative—a running script must explicitly call `coroutine.yield()`. In Ottavino, because the interpreter step function returns control after a bounded amount of fuel/steps, the host can run multiple independent Lua threads/tasklets pre-emptively in a round-robin schedule without requiring cooperation from the scripts.
+
+#### 3. Fuel, Pacing, and Custom Scheduling
+Ottavino tracks VM execution using a **`Fuel`** counter:
+- As the VM executes bytecode instructions, fuel is consumed.
+- When fuel is exhausted or an explicit interrupt occurs, `Executor::step` yields control back to the host caller.
+- This allows host applications (e.g. game loops or web servers) to allocate a bounded CPU slice ("fuel allowance") per frame/request to untrusted Lua scripts.
+
+#### 4. "Symmetric" Coroutines and `coroutine.yieldto`
+Standard Lua supports *asymmetric* coroutines (`coroutine.resume` yields back *only* to its direct caller). Supporting true *symmetric* coroutines (yielding directly to another sibling coroutine) in standard Lua causes stack leaks because standard Lua cannot perform "tail yields".
+
+In Ottavino, because control flow jumps back to the trampoline executor loop, symmetric coroutines are natively supported via **`coroutine.yieldto(co, ...)`**:
+
+```lua
+-- Symmetric coroutine hand-off without stack leaks or external runner loops
+co1 = coroutine.create(function()
+  while true do
+    print("In co1, handing off to co2")
+    coroutine.yieldto(co2)
+  end
+end)
+
+co2 = coroutine.create(function()
+  while true do
+    print("In co2, handing off to co1")
+    coroutine.yieldto(co1)
+  end
+end)
+
+coroutine.resume(co1)
+```
+
+### The "Big Lie" (Comparison with PUC-Rio C-Lua & `lua_callk`)
+
+In standard PUC-Rio Lua C API, tasklets can be approximated using `lua_sethook` with instruction count triggers that call `lua_yield`. However, if Lua calls a C function (like `table.sort`) which in turn calls a Lua comparator function, calling `lua_yield` inside the comparator causes a C `longjmp` failure (`LUA_ERRRUN` / "attempt to yield across C-call boundary").
+
+While PUC-Rio Lua introduced `lua_callk` / `lua_pcallk` to allow C functions to specify continuation functions for yielding, writing C callbacks this way is notoriously complex and error-prone. Almost none of the standard C library functions support continuation yielding.
+
+Ottavino solves this at the root: **all** VM instruction loops, closures, and stdlib operations are structured around step continuation objects (`Sequence`), making the entire VM stackless and yieldable by design.
+
+### Rust Coroutines, Lua Coroutines, and Snarfing
+
+In programming language theory, **"snarfing"** occurs when an embedded guest language automatically inherits features from its host language (such as memory management or execution state).
+
+Ottavino was designed so that Lua execution mechanics mesh cleanly with Rust's ownership and async/coroutine models. Instead of relying on unsafe C stack manipulations, execution state is held in safe Rust data structures.
+
+### Arena Memory Allocation & GC (`gc-arena`)
+
+Ottavino uses [`gc-arena`](https://github.com/kyren/gc-arena) for garbage collection:
+- **Mutation XOR Collection**: Memory access occurs within safe GC mutation blocks.
+- **Pure Rust Safety**: Provides true tracing garbage collection in safe Rust without relying on global GC locks or unsafe C pointers.
+- **Memory Metrics**: Exposes `totalMemory()`, `gcCollect()`, and `gcMetrics()` to JavaScript.
 
 ### Sandboxing & Modular Library Loading
-Standard Lua initializes all standard libraries into `_G` automatically. Ottavino provides granular library sandboxing controls via constructors and methods:
-- `Lua.empty()`: VM starts with zero libraries loaded (cannot call `print`, `type`, etc.).
-- `loadCore()`: Explicitly loads `base`, `coroutine`, `math`, `string`, and `table` modules.
-- `loadIo()`: Explicitly loads `io` modules.
 
-### Omitted Modules & Differences from C-Lua
-To maintain pure Rust safety and host sandboxing, Ottavino intentionally omits certain standard Lua C libraries:
-- **No `package` / `require` module**: Modules cannot load external C libraries or arbitrary filesystem files via `require`.
-- **No `os` module**: Eliminates shell command execution (`os.execute`), environment access, or unsafe file removal from sandboxed scripts.
-- **No `debug` module**: Prevents arbitrary inspection/modification of call stacks and internal upvalues.
-- **No C-FFI / `lua_CFunction`**: C functions cannot be dynamically loaded into the VM.
+To ensure maximum security when running untrusted user scripts, Ottavino omits unsafe host modules present in standard C-Lua:
+- **No `package` / `require`**: Prevents loading arbitrary host files or external C dynamic libraries.
+- **No `os` module**: Eliminates shell execution (`os.execute`) or unsafe filesystem mutation.
+- **No `debug` module**: Prevents inspecting internal stack frames or upvalues.
+
+Furthermore, library loading is granular:
+- `Lua.empty()` starts with zero stdlib functions.
+- `loadCore()` loads `base`, `coroutine`, `math`, `string`, and `table`.
+- `loadIo()` loads `io`.

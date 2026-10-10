@@ -1,11 +1,12 @@
 # API Documentation for `@alloy-ts/lua`
 
-The `@alloy-ts/lua` package provides a high-performance JavaScript/TypeScript interface to a pure Rust Lua 5.4 execution environment (`ottavino`) compiled via [NAPI-RS](https://napi.rs/).
+The `@alloy-ts/lua` package provides a high-performance JavaScript/TypeScript interface to a pure Rust Lua 5.4 execution environment (`ottavino` / `piccolo`) compiled via [NAPI-RS](https://napi.rs/).
 
 ---
 
 ## Table of Contents
 
+- [Overview & Rust Architecture Mapping](#overview--rust-architecture-mapping)
 - [Exported Class: `Lua`](#exported-class-lua)
   - [Constructors & Factory Methods](#constructors--factory-methods)
   - [Evaluation & Execution](#evaluation--execution)
@@ -15,6 +16,21 @@ The `@alloy-ts/lua` package provides a high-performance JavaScript/TypeScript in
 - [Exported Interfaces](#exported-interfaces)
   - [`GcMetrics`](#gcmetrics)
 - [Value Conversion Rules](#value-conversion-rules)
+
+---
+
+## Overview & Rust Architecture Mapping
+
+At the native layer (written in Rust in `src/lua.rs`), `@alloy-ts/lua` wraps the `ottavino` (Piccolo) Lua 5.4 VM crate:
+
+| Ottavino (Rust) Type | NAPI Wrapper / Exposure in `@alloy-ts/lua` | Description |
+| -------------------- | ------------------------------------------ | ----------- |
+| `ottavino::Lua` | `export class Lua` | The top-level Lua VM owner and GC arena host. |
+| `ottavino::Context<'gc>` | Managed inside Rust NAPI methods | Execution and allocation context for the `gc-arena`. |
+| `ottavino::Executor` | Managed inside `lua.eval()` | Stackless VM runner that steps through Lua bytecode chunks. |
+| `ottavino::Value<'gc>` | Converted JS primitives / objects / arrays | Corresponds to Lua values (`Nil`, `Boolean`, `Integer`, `Number`, `String`, `Table`, `Function`, `Thread`, `UserData`). |
+| `ottavino::Table<'gc>` | JS `Object` or `Array` | Corresponds to Lua table associative arrays / sequences. |
+| `ottavino::GcMetrics` | `interface GcMetrics` | Snapshot metrics from the VM memory allocator. |
 
 ---
 
@@ -89,7 +105,7 @@ lua.setGlobal("config", { host: "localhost", port: 8080 });
 #### `lua.getGlobal(name: string): unknown`
 - **Parameters**:
   - `name` (`string`): Global variable name in Lua.
-  - `returns`: `unknown`
+- **Returns**: `unknown`
 - Fetches a global variable from the Lua VM, converted into a JavaScript value.
 
 ```typescript

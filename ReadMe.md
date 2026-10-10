@@ -4,7 +4,7 @@
 > using Lua's C/Rust VM API via NAPI.
 
 This library uses [NAPI-RS](https://napi.rs/) and
-[Ottavino](https://github.com/kyren/ottavino) (a pure Rust Lua 5.4 VM
+[Ottavino](https://github.com/kyren/ottavino) / [Piccolo](https://github.com/kyren/piccolo) (a pure Rust Lua 5.4 VM
 implementation) to safely expose Lua's API to Node.js and JavaScript
 environments without external native C dependencies.
 
@@ -12,6 +12,7 @@ environments without external native C dependencies.
 
 - **Full Lua Environment**: Create sandboxed Lua states with empty, core, or
   full standard libraries.
+- **Stackless Interpreter**: Powered by Ottavino/Piccolo's stackless VM architecture supporting cancellation, fuel pacing, and symmetric coroutines (`coroutine.yieldto`).
 - **Eval Lua Code**: Run arbitrary Lua scripts and return JavaScript primitives,
   objects, and arrays.
 - **Global Variable Binding**: Get and set global variables in the Lua VM
@@ -76,8 +77,8 @@ node --import @oxc-node/core/register examples/stdlib.ts
 
 ## Documentation
 
-- [`docs/api.md`](docs/api.md) — Detailed JS/TS API reference for `@alloy-ts/lua`.
-- [`docs/lang-guide.md`](docs/lang-guide.md) — Lua 5.4 language guide, standard library modules, and Ottavino Rust VM capabilities & sandboxing features.
+- [`docs/api.md`](docs/api.md) — Detailed JS/TS API reference for `@alloy-ts/lua` and mapping to Ottavino Rust types.
+- [`docs/lang-guide.md`](docs/lang-guide.md) — Comprehensive guide covering Lua 5.4 language basics, standard library modules, Ottavino/Piccolo stackless architecture, fuel pacing, pre-emptive tasklets, symmetric coroutines (`coroutine.yieldto`), and sandboxing controls.
 
 ### Summary of `Lua` Methods
 
