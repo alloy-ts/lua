@@ -139,6 +139,23 @@ describe("global variables via lua.globals()", () => {
     lua.globals().set("add", (a: number, b: number) => a + b);
     expect(lua.eval("return add(10, 20)")).toBe(30);
   });
+
+  test("JS callback errors propagate and can be caught by pcall in Lua", () => {
+    const lua = Lua.full();
+    lua.globals().set("failingHostFn", () => {
+      throw new Error("custom JS error message");
+    });
+
+    // Unhandled exception surfaces as Lua runtime error
+    expect(() => lua.eval("failingHostFn()")).toThrow(/custom JS error message/);
+
+    // Handled by Lua pcall
+    const [ok, errMsg] = lua.eval(
+      "local ok, err = pcall(failingHostFn); return { ok, tostring(err) }",
+    ) as [boolean, string];
+    expect(ok).toBe(false);
+    expect(errMsg).toMatch(/custom JS error message/);
+  });
 });
 
 describe("standard-library loading", () => {
@@ -146,7 +163,7 @@ describe("standard-library loading", () => {
     const lua = Lua.empty();
     // Arithmetic is a VM-level operation, so it works without any stdlib.
     expect(lua.eval("return 1 + 2")).toBe(3);
-    // `type` is a base-library global and must be absent here.
+    // `type` is a base-library global; it must be absent here.
     expect(() => lua.eval("return type(1)")).toThrow();
   });
 

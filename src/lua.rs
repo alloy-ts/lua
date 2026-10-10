@@ -890,9 +890,11 @@ fn js_to_ottavino_value<'gc>(
                         let v = stack.get(i);
                         let u = match ottavino_value_to_js(env, ctx, &handles_cb, v) {
                             Ok(u) => u,
-                            Err(_) => unsafe {
-                                Unknown::from_raw_unchecked(env.raw(), ptr::null_mut())
-                            },
+                            Err(e) => {
+                                return Err(
+                                    ottavino::RuntimeError::from(anyhow::anyhow!(e.reason)).into(),
+                                );
+                            }
                         };
                         js_args.push(u);
                     }
@@ -904,14 +906,13 @@ fn js_to_ottavino_value<'gc>(
                                 stack.push_back(val);
                                 Ok(CallbackReturn::Return)
                             }
-                            Err(_) => {
-                                stack.clear();
-                                Ok(CallbackReturn::Return)
-                            }
+                            Err(e) => Err(ottavino::RuntimeError::from(anyhow::anyhow!(
+                                e.reason
+                            ))
+                            .into()),
                         },
-                        Err(_) => {
-                            stack.clear();
-                            Ok(CallbackReturn::Return)
+                        Err(e) => {
+                            Err(ottavino::RuntimeError::from(anyhow::anyhow!(e.reason)).into())
                         }
                     }
                 })
@@ -989,8 +990,22 @@ fn call_js_function<'a>(
         unsafe {
             sys::napi_get_and_clear_last_exception(env_raw, &mut exc);
         }
-        Err(NapiError::from_reason(
-            "JS host callback threw an exception",
-        ))
+        let exc_str = if !exc.is_null() {
+            let exc_val = unsafe { Unknown::from_raw_unchecked(env_raw, exc) };
+            if let Ok(s) = unsafe { String::from_napi_value(env_raw, exc_val.raw()) } {
+                s
+            } else if let Ok(obj) = unsafe { Object::from_napi_value(env_raw, exc_val.raw()) } {
+                if let Ok(msg) = obj.get_named_property::<String>("message") {
+                    msg
+                } else {
+                    "JS host callback threw an exception".to_string()
+                }
+            } else {
+                "JS host callback threw an exception".to_string()
+            }
+        } else {
+            "JS host callback threw an exception".to_string()
+        };
+        Err(NapiError::from_reason(exc_str))
     }
 }
