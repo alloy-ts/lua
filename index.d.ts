@@ -17,7 +17,7 @@ export declare class Lua {
   static core(): Lua
   /** Create an empty `Lua` instance. */
   static empty(): Lua
-  /** Set a global variable or constant in the Lua environment from a JS primitive value. */
+  /** Set a global variable or constant in the Lua environment from a JS value (primitive or object). */
   setGlobal(name: string, value: unknown): void
   /** Evaluate a Lua script/expression string and return the result value converted to JS. */
   eval(code: string): unknown
