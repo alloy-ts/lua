@@ -42,14 +42,15 @@ user.role = "admin"
 local list = {"a", "b", "c"}
 ```
 
-### Error Handling in Lua & JS Cross-Boundary
+### Error Handling in Lua & Coroutine Threads
 Lua provides built-in mechanisms for raising and trapping runtime errors:
 - **`error(message)`**: Explicitly raises an error.
 - **`assert(v, message)`**: Raises an error if `v` evaluates to false/nil.
 - **`pcall(f, ...)`**: Protected call. Executes function `f` and returns `ok, result_or_error`.
 - **`xpcall(f, msgh)`**: Protected call with custom error handler `msgh`.
+- **`coroutine.resume(co)`**: Resumes a coroutine thread under a protected call boundary. Errors inside the coroutine thread do not crash the VM; `coroutine.resume` returns `false, "error message"`, and transitions the thread to status `'dead'`.
 
-When an error escapes a top-level Lua evaluation, the NAPI boundary intercepts the `ottavino::Error` and converts it into a standard JavaScript `Error` exception, allowing JS callers to handle Lua errors using standard `try { ... } catch (err) { ... }` blocks.
+When an unhandled error escapes top-level Lua evaluation, the NAPI boundary intercepts the `ottavino::Error` and converts it into a standard JavaScript `Error` exception, allowing JS callers to handle Lua errors using standard `try { ... } catch (err) { ... }` blocks.
 
 ---
 

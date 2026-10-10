@@ -29,6 +29,7 @@ This document provides a comprehensive comparison between the low-level Rust **`
 When evaluating Lua code via `lua.eval(code)`:
 - **Syntax Errors**: If the Lua parser encounters invalid syntax, a native JavaScript `Error` is thrown (`parse error`).
 - **Runtime Errors**: If Lua encounters an unhandled runtime error (e.g., `error("msg")`, `assert(false)`, or type mismatch operations), the underlying Rust `ottavino::Error` is intercepted and thrown as a native JavaScript `Error`.
+- **Coroutine Thread Errors**: Errors inside coroutines resumed via `coroutine.resume(co)` are caught as protected calls inside Lua, returning `false, "error message"`. Unhandled thread errors escaping top-level evaluation are caught by NAPI and thrown as JavaScript `Error` instances.
 - **JS try/catch**: You can wrap `lua.eval(...)` calls in JavaScript `try { ... } catch (err) { ... }` blocks to catch Lua errors seamlessly.
 - **Native Lua pcall/xpcall**: Within Lua scripts, errors can be caught natively using `pcall(fn)` or `xpcall(fn, msgh)`.
 
