@@ -93,6 +93,27 @@ describe("Lua.eval - value conversion", () => {
   });
 });
 
+describe("callbacks and JS functions", () => {
+  test("registerCallback and setGlobal with JS functions can be invoked from Lua", () => {
+    const lua = Lua.full();
+    lua.setGlobal("jsAdd", (a: number, b: number) => a + b);
+    expect(lua.eval("return jsAdd(10, 20)")).toBe(30);
+
+    lua.registerCallback("greet", (name: string) => `Hello ${name}`);
+    expect(lua.eval("return greet('Lua')")).toBe("Hello Lua");
+  });
+
+  test("callbacks can exchange complex tables and objects", () => {
+    const lua = Lua.full();
+    lua.registerCallback("transform", (obj: { x: number; y: number }) => {
+      return { sum: obj.x + obj.y, label: "computed" };
+    });
+
+    const res = lua.eval("return transform({ x = 5, y = 15 })");
+    expect(res).toEqual({ sum: 20, label: "computed" });
+  });
+});
+
 describe("global variables", () => {
   test("setGlobal / getGlobal round-trip scalars", () => {
     const lua = Lua.full();

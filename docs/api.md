@@ -25,7 +25,10 @@ import { Lua, GcMetrics, __napiBindingTarget } from "@alloy-ts/lua";
   Compiles and evaluates the given Lua script string in the VM state. Returns the resulting value converted to JavaScript primitives, arrays, or objects. Throws if a compile error or runtime error occurs.
 
 - **`lua.setGlobal(name: string, value: unknown): void`**
-  Binds a global variable in the Lua environment under `name`. Automatically converts JS primitives (number, string, boolean, undefined/null) and JS objects/arrays into Lua types and tables.
+  Binds a global variable in the Lua environment under `name`. Automatically converts JS primitives (number, string, boolean, undefined/null), JS functions (callbacks), and JS objects/arrays into Lua types, functions, and tables.
+
+- **`lua.registerCallback(name: string, callback: (...args: unknown[]) => unknown): void`**
+  Registers a JavaScript/TypeScript function as a global callback callable directly from Lua scripts. Translates Lua `Stack` arguments to JS values and converts JS return values back onto the Lua stack.
 
 - **`lua.getGlobal(name: string): unknown`**
   Retrieves the value of a global variable from the Lua environment by `name` and converts it to a JS value.
@@ -75,6 +78,7 @@ export interface GcMetrics {
 | `number` (float) | `number` | Floating point number |
 | `string` | `string` | Interned string in Lua |
 | `boolean` | `boolean` | Primitive boolean |
+| `Function` (from JS) | `function` (callback) | Wrapped in `ottavino::Callback` and callable inside Lua |
 | `Array` | `table` (sequential) | Converted to 1-indexed sequential Lua table |
 | `Object` (plain) | `table` (keyed) | Converted to key-value Lua table |
 | `Function` | `"[lua function]"` | Surfaced in JS as a placeholder string |

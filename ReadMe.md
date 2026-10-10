@@ -68,7 +68,8 @@ lua.gcCollect();
 ### Key Methods
 
 - **`lua.eval(code: string): unknown`**: Compiles and executes the given Lua code string, returning the result converted to JavaScript values.
-- **`lua.setGlobal(name: string, value: unknown): void`**: Sets a global variable in the Lua VM environment from JS primitives, objects, or arrays.
+- **`lua.setGlobal(name: string, value: unknown): void`**: Sets a global variable in the Lua VM environment from JS primitives, objects, arrays, or functions.
+- **`lua.registerCallback(name: string, callback: Function): void`**: Binds a JS/TS function as a global Lua callback function callable from Lua.
 - **`lua.getGlobal(name: string): unknown`**: Retrieves a global variable from the Lua VM environment.
 - **`lua.loadCore(): void`**: Loads core standard libraries into an existing Lua state.
 - **`lua.loadIo(): void`**: Loads I/O standard library definitions into an existing Lua state.

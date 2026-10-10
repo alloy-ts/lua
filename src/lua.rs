@@ -178,6 +178,17 @@ impl Lua {
 
         set_result
     }
+
+    /// Register a JavaScript function as a global Lua callback.
+    #[napi]
+    pub fn register_callback(
+        &mut self,
+        env: &Env,
+        name: String,
+        callback: Unknown,
+    ) -> Result<(), NapiError> {
+        self.set_global(env, name, callback)
+    }
 }
 
 fn ottavino_value_to_js<'js, 'gc>(
@@ -251,6 +262,70 @@ fn js_to_ottavino_value<'gc>(
             let s = unsafe { String::from_napi_value(env.raw(), js_val.raw())? };
             let interned = ctx.intern(s.as_bytes());
             Ok(ottavino::Value::String(interned))
+        }
+        ValueType::Function => {
+            let mut ref_ptr = std::ptr::null_mut();
+            let status = unsafe {
+                napi::sys::napi_create_reference(env.raw(), js_val.raw(), 1, &mut ref_ptr)
+            };
+            if status != 0 {
+                return Err(NapiError::from_reason("Failed to create NAPI reference for function"));
+            }
+
+            let env_raw = env.raw();
+            let cb = ottavino::Callback::from_fn(&ctx, move |ctx, _exec, mut stack| {
+                let env = Env::from_raw(env_raw);
+                let mut fn_raw = std::ptr::null_mut();
+                let status = unsafe {
+                    napi::sys::napi_get_reference_value(env_raw, ref_ptr, &mut fn_raw)
+                };
+                if status != 0 || fn_raw.is_null() {
+                    let msg = ctx.intern(b"Failed to resolve JS function reference");
+                    return Err(ottavino::Error::from_value(ottavino::Value::String(msg)));
+                }
+
+                let len = stack.len();
+                let mut raw_args = Vec::with_capacity(len);
+                for i in 0..len {
+                    let val = stack.get(i);
+                    let js_val = ottavino_value_to_js(&env, ctx, val).map_err(|e| {
+                        let msg = ctx.intern(e.to_string().as_bytes());
+                        ottavino::Error::from_value(ottavino::Value::String(msg))
+                    })?;
+                    raw_args.push(js_val.raw());
+                }
+
+                let mut global_raw = std::ptr::null_mut();
+                unsafe { napi::sys::napi_get_global(env_raw, &mut global_raw) };
+
+                let mut result_raw = std::ptr::null_mut();
+                let call_status = unsafe {
+                    napi::sys::napi_call_function(
+                        env_raw,
+                        global_raw,
+                        fn_raw,
+                        raw_args.len(),
+                        raw_args.as_ptr(),
+                        &mut result_raw,
+                    )
+                };
+
+                if call_status != 0 || result_raw.is_null() {
+                    let msg = ctx.intern(b"Error executing JS callback from Lua");
+                    return Err(ottavino::Error::from_value(ottavino::Value::String(msg)));
+                }
+
+                let ret_unknown = unsafe { Unknown::from_raw_unchecked(env_raw, result_raw) };
+
+                let lua_ret = js_to_ottavino_value(&env, ctx, ret_unknown).map_err(|e| {
+                    let msg = ctx.intern(e.to_string().as_bytes());
+                    ottavino::Error::from_value(ottavino::Value::String(msg))
+                })?;
+
+                stack.replace(ctx, lua_ret);
+                Ok(ottavino::CallbackReturn::Return)
+            });
+            Ok(ottavino::Value::Function(ottavino::Function::Callback(cb)))
         }
         ValueType::Object => {
             if js_val.is_array()? {
