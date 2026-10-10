@@ -555,9 +555,12 @@ impl Lua {
 
         self.inner.enter(|ctx| {
             let callback = Callback::from_fn(ctx.mutation(), move |ctx, _exec, mut stack| {
+                let mut callback_err: Option<String> = None;
+
                 HOST_CALLBACKS.with(|cell| {
                     let guard = cell.borrow();
                     let Some((func_ref, env)) = guard.get(id as usize).and_then(|o| o.as_ref()) else {
+                        callback_err = Some("host callback reference not found".to_string());
                         return;
                     };
                     let mut func_val = ptr::null_mut();
@@ -570,11 +573,13 @@ impl Lua {
                     {
                         let mut h = handles.lock().unwrap();
                         for v in &stack {
-                            let u = match ottavino_value_to_js(env, ctx, &mut *h, v) {
-                                Ok(u) => u,
-                                Err(_) => unsafe { Unknown::from_raw_unchecked(env.raw(), ptr::null_mut()) },
-                            };
-                            js_args.push(u);
+                            match ottavino_value_to_js(env, ctx, &mut *h, v) {
+                                Ok(u) => js_args.push(u),
+                                Err(e) => {
+                                    callback_err = Some(format!("failed to convert argument: {e}"));
+                                    return;
+                                }
+                            }
                         }
                     }
 
@@ -584,12 +589,22 @@ impl Lua {
                                 stack.clear();
                                 stack.push_back(val);
                             }
-                            Err(_) => stack.clear(),
+                            Err(e) => {
+                                callback_err = Some(format!("failed to convert return value: {e}"));
+                            }
                         },
-                        Err(_) => stack.clear(),
+                        Err(e) => {
+                            callback_err = Some(e.to_string());
+                        }
                     }
                 });
-                Ok(CallbackReturn::Return)
+
+                if let Some(err_msg) = callback_err {
+                    let val = ottavino::Value::String(ctx.intern(err_msg.as_bytes()));
+                    Err(ottavino::Error::from(val))
+                } else {
+                    Ok(CallbackReturn::Return)
+                }
             });
 
             let key = ctx.intern(name.as_bytes());
