@@ -22,6 +22,7 @@ This guide covers the basics of Lua 5.4, its standard libraries, and the underly
   - [Coroutine Library (`coroutine`)](#coroutine-library-coroutine)
   - [I/O Library (`io`)](#io-library-io)
 - [3. Deep Dive: Ottavino / Piccolo Architecture & Features](#3-deep-dive-ottavino--piccolo-architecture--features)
+  - [The 13 Core Ottavino Architecture Types](#the-13-core-ottavino-architecture-types)
   - [A "Stackless" Interpreter Design](#a-stackless-interpreter-design)
   - [Benefits of Stackless Architecture](#benefits-of-stackless-architecture)
     - [1. Cancellation](#1-cancellation)
@@ -205,6 +206,24 @@ Basic file I/O streams:
 ## 3. Deep Dive: Ottavino / Piccolo Architecture & Features
 
 **Ottavino** is a pure Rust reimplementation of the Lua 5.4 Virtual Machine (`kyren/ottavino`, built on **Piccolo**). It powers `@alloy-ts/lua`.
+
+### The 13 Core Ottavino Architecture Types
+
+Ottavino structures its VM using 13 primary Rust types:
+
+1. **`Lua`**: The top-level Lua VM instance owning the garbage collector arena.
+2. **`Context<'gc>`**: GC mutation handle and string interning context passed into inner VM operations.
+3. **`Executor`**: Trampoline VM runner that executes bytecode instructions step-by-step.
+4. **`StashedExecutor`**: Arena-safe reference handle holding an executor across `Lua::enter` calls.
+5. **`Value<'gc>`**: Core tagged union enum representing all Lua values (`Nil`, `Boolean`, `Integer`, `Number`, `String`, `Table`, `Function`, `Thread`, `UserData`).
+6. **`Table<'gc>`**: GC-managed hash/array associative data structure.
+7. **`Closure<'gc>`**: Compiled Lua bytecode function prototype bound to environment upvalues.
+8. **`Fuel`**: Step counter object pacing execution time.
+9. **`Callback<'gc>`**: Rust host function callback implementing `CallbackFn` or `Sequence`.
+10. **`Thread<'gc>`**: Coroutine thread object representing an execution stack.
+11. **`Stack<'gc>`**: Value stack holding function arguments and return values.
+12. **`UserData<'gc>`**: Host custom raw data buffer.
+13. **`Metrics`**: GC allocator metrics snapshot.
 
 ### A "Stackless" Interpreter Design
 

@@ -6,96 +6,67 @@ The `@alloy-ts/lua` package provides a high-performance JavaScript/TypeScript in
 
 ## Table of Contents
 
-- [Overview & Rust Architecture Mapping](#overview--rust-architecture-mapping)
-- [Exported Class: `Lua`](#exported-class-lua)
-  - [Constructors & Factory Methods](#constructors--factory-methods)
-  - [Evaluation & Execution](#evaluation--execution)
-  - [Global State Binding](#global-state-binding)
-  - [Executor & Thread Handle Methods](#executor--thread-handle-methods)
-  - [Standard Library Loading](#standard-library-loading)
-  - [Memory & Garbage Collection](#memory--garbage-collection)
+- [Core Ottavino Types & NAPI Exposure Matrix](#core-ottavino-types--napi-exposure-matrix)
 - [Exported Classes & Interfaces](#exported-classes--interfaces)
+  - [`Lua`](#lua)
   - [`LuaExecutor`](#luaexecutor)
   - [`LuaThread`](#luathread)
   - [`StepResult`](#stepresult)
   - [`GcMetrics`](#gcmetrics)
 - [Value Conversion Rules](#value-conversion-rules)
-- [Error & Exception Handling](#error--exception-handling)
+- [Cross-Boundary Exception & Error Conversion](#cross-boundary-exception--error-conversion)
 
 ---
 
-## Overview & Rust Architecture Mapping
+## Core Ottavino Types & NAPI Exposure Matrix
 
-At the native layer (written in Rust in `src/lua.rs`), `@alloy-ts/lua` wraps the `ottavino` (Piccolo) Lua 5.4 VM crate:
+The table below summarizes how each of the 13 core Ottavino Rust types is handled in the `@alloy-ts/lua` NAPI bridge:
 
-| Ottavino (Rust) Type | NAPI Wrapper / Exposure in `@alloy-ts/lua` | Description |
-| -------------------- | ------------------------------------------ | ----------- |
-| `ottavino::Lua` | `export class Lua` | The top-level Lua VM owner and GC arena host. |
-| `ottavino::Executor` | `export class LuaExecutor` | Step-driven trampoline VM runner pacing execution with fuel limits. |
-| `ottavino::Thread` | `export class LuaThread` | Coroutine thread handle exposing `resume()` and `status()`. |
-| `ottavino::Value<'gc>` | Converted JS primitives / objects / arrays | Corresponds to Lua values (`Nil`, `Boolean`, `Integer`, `Number`, `String`, `Table`, `Function`, `Thread`, `UserData`). |
-| `ottavino::Table<'gc>` | JS `Object` or `Array` | Corresponds to Lua table associative arrays / sequences. |
-| `ottavino::GcMetrics` | `interface GcMetrics` | Snapshot metrics from the VM memory allocator. |
-
----
-
-## Exported Class: `Lua`
-
-The `Lua` class represents an isolated Lua VM state.
-
-### Constructors & Factory Methods
-
-#### `new Lua()`
-- **Returns**: `Lua`
-- Creates a new Lua instance with the full standard library loaded (equivalent to `Lua.full()`).
-
-#### `Lua.full()`
-- **Returns**: `Lua`
-- Instantiates a Lua VM state with full standard libraries pre-loaded.
-
-#### `Lua.core()`
-- **Returns**: `Lua`
-- Instantiates a sandboxed Lua VM state with core libraries loaded (omitting file/system I/O).
-
-#### `Lua.empty()`
-- **Returns**: `Lua`
-- Instantiates an isolated Lua VM state with **no** standard libraries loaded.
-
----
-
-### Evaluation & Execution
-
-#### `lua.eval(code: string): unknown`
-- Compiles and executes the given Lua code string, returning converted JS result.
-- **Throws**: JavaScript `Error` on compile or runtime errors.
-
----
-
-### Global State Binding
-
-#### `lua.setGlobal(name: string, value: unknown): void`
-- Binds a JS primitive, array, or object into the Lua global environment.
-
-#### `lua.getGlobal(name: string): unknown`
-- Retrieves a global variable from the Lua VM as a converted JS value.
-
----
-
-### Executor & Thread Handle Methods
-
-#### `lua.executor(code: string): LuaExecutor`
-- **Parameters**: `code` (`string`): The Lua code chunk to create an executor for.
-- **Returns**: `LuaExecutor`
-- Creates a step-driven VM executor wrapper allowing fuel-based step execution.
-
-#### `lua.createThread(codeOrFnName: string): LuaThread`
-- **Parameters**: `codeOrFnName` (`string`): A Lua code block or global function name.
-- **Returns**: `LuaThread`
-- Creates a suspended Lua coroutine thread handle.
+| Ottavino Rust Type | NAPI Class / Conversion in JS/TS | Exposure & Role |
+| -------------------- | ------------------------------- | --------------- |
+| **`Lua`** | `class Lua` | Top-level VM owner and GC arena host. |
+| **`Context<'gc>`** | Managed internally in Rust closures | GC mutation and string interning context passed to VM operations. |
+| **`Executor`** | `class LuaExecutor` | Step-driven trampoline VM runner pacing bytecode execution with fuel. |
+| **`StashedExecutor`** | Managed inside `LuaExecutor` | Arena-safe handle referencing a paused or active `Executor` across `Lua::enter` calls. |
+| **`Value<'gc>`** | JS Primitives / Objects / Arrays | Bidirectionally marshaled enum (`Nil`, `Boolean`, `Integer`, `Number`, `String`, `Table`, `Function`, `Thread`, `UserData`). |
+| **`Table<'gc>`** | JS `Object` or `Array` | Converted to sequential JS Arrays (if 1-indexed sequence) or plain JS Objects. |
+| **`Closure<'gc>`** | Executed in VM / `eval` | Compiled Lua function prototype bound to an environment upvalue table. |
+| **`Fuel`** | Passed into `executor.step(fuel)` | Step counter pacing instruction limits to guarantee bounded execution time. |
+| **`Callback<'gc>`** | Used internally for host calls | Rust function wrapper implementing `CallbackFn` or `Sequence`. |
+| **`Thread<'gc>`** | `class LuaThread` | Coroutine thread handle exposing `resume()` and `status()`. |
+| **`Stack<'gc>`** | Managed internally in callbacks | Value argument and return stack for VM function calls. |
+| **`UserData<'gc>`** | String placeholder (`"[lua userdata]"`) | Host-allocated custom Rust userdata buffer. |
+| **`Metrics`** | `interface GcMetrics` | Snapshot metrics from the `gc-arena` memory allocator. |
 
 ---
 
 ## Exported Classes & Interfaces
+
+### `Lua`
+
+The `Lua` class represents an isolated Lua VM state.
+
+#### Constructors & Factory Methods
+
+- **`new Lua()`**: Creates a new Lua instance with the full standard library loaded (base, coroutine, math, string, table, I/O).
+- **`Lua.full()`**: Creates a Lua instance with full standard libraries pre-loaded.
+- **`Lua.core()`**: Creates a sandboxed Lua instance with core libraries loaded (omitting file/system I/O).
+- **`Lua.empty()`**: Creates an empty, highly sandboxed Lua instance with **no** standard libraries loaded.
+
+#### Evaluation & Execution
+
+- **`lua.eval(code: string): unknown`**: Compiles and executes the given Lua code string, returning converted JS result.
+- **`lua.setGlobal(name: string, value: unknown): void`**: Binds a JS primitive, array, or object into the Lua global environment.
+- **`lua.getGlobal(name: string): unknown`**: Retrieves a global variable from the Lua VM as a converted JS value.
+- **`lua.executor(code: string): LuaExecutor`**: Creates a step-driven `LuaExecutor` wrapper.
+- **`lua.createThread(codeOrFnName: string): LuaThread`**: Creates a suspended Lua coroutine `LuaThread` handle.
+- **`lua.loadCore(): void`**: Loads core standard libraries into an existing instance.
+- **`lua.loadIo(): void`**: Loads I/O standard libraries into an existing instance.
+- **`lua.totalMemory(): number`**: Returns total memory used by the VM in bytes.
+- **`lua.gcCollect(): void`**: Runs a full garbage collection cycle.
+- **`lua.gcMetrics(): GcMetrics`**: Returns allocator memory metrics.
+
+---
 
 ### `LuaExecutor`
 
@@ -105,10 +76,16 @@ Exposes step-driven execution paced by fuel units.
 - **`executor.isDone(): boolean`**: Returns whether execution has completed.
 
 ```typescript
-const executor = lua.executor("return 100 + 200");
-const res = executor.step(50);
-console.log(res.done, res.value); // true, 300
+const executor = lua.executor("local sum = 0; for i = 1, 1000 do sum = sum + i end; return sum");
+let done = false;
+while (!done) {
+  const res = executor.step(100);
+  done = res.done;
+  if (done) console.log("Final Result:", res.value);
+}
 ```
+
+---
 
 ### `LuaThread`
 
@@ -122,6 +99,8 @@ const thread = lua.createThread("myCoroutine");
 const yieldVal = thread.resume();
 ```
 
+---
+
 ### `StepResult`
 
 ```typescript
@@ -132,6 +111,8 @@ export interface StepResult {
   value?: unknown;
 }
 ```
+
+---
 
 ### `GcMetrics`
 
@@ -146,10 +127,56 @@ export interface GcMetrics {
 
 ---
 
-## Error & Exception Handling
+## Value Conversion Rules
 
-When an error occurs during Lua evaluation:
-- **Lua Compile (Syntax) Errors**: Throws a NAPI JavaScript `Error` prefixed with `"Lua compile error:"`.
-- **Lua Runtime Errors**: Explicit calls to `error('msg')` or type errors in Lua throw a NAPI JavaScript `Error` prefixed with `"Lua runtime error:"`.
-- **Catching in JS/TS**: Can be caught using standard JS `try/catch` blocks.
-- **Catching in Lua**: Errors inside Lua code can be trapped using Lua's built-in `pcall(fn, args...)` function.
+### Lua → JavaScript
+
+| Lua Value Type | Returned JavaScript Value Type | Note / Representation |
+| -------------- | ----------------------------- | --------------------- |
+| `nil` | `undefined` | Unset or nil values map to `undefined` |
+| `boolean` | `boolean` | `true` or `false` |
+| `integer` | `number` | Converted to JS float/int number |
+| `float` | `number` | Converted to JS number |
+| `string` | `string` | UTF-8 decoded string |
+| `table` (sequential) | `Array` | 1-indexed sequential tables become 0-indexed JS Arrays |
+| `table` (keyed/hash) | `Object` | Keyed table entries become JS Object properties |
+| `function` | `string` | Returned as `"[lua function]"` placeholder |
+| `thread` | `string` | Returned as `"[lua thread]"` placeholder |
+| `userdata` | `string` | Returned as `"[lua userdata]"` placeholder |
+
+### JavaScript → Lua
+
+| JavaScript Value Type | Converted Lua Value Type | Note / Representation |
+| --------------------- | ------------------------ | --------------------- |
+| `undefined` / `null` | `nil` | Maps directly to Lua `nil` |
+| `boolean` | `boolean` | `true` or `false` |
+| `number` (integer) | `integer` | Numbers with zero fractional component fit in `i64` |
+| `number` (float) | `number` | Floating-point numbers |
+| `string` | `string` | String interned in Lua VM |
+| `Array` | `table` | Converted to 1-indexed sequential table |
+| `Object` | `table` | Plain objects converted to string-keyed hash table |
+
+---
+
+## Cross-Boundary Exception & Error Conversion
+
+When an exception or error occurs across the JS/TS ↔ Lua boundary:
+
+1. **Lua Compile / Syntax Errors**:
+   - **Trigger**: Syntax error or unparseable chunk passed to `lua.eval()`, `lua.executor()`, or `lua.createThread()`.
+   - **Conversion**: Rust converts `CompilerError` into a NAPI JS `Error` instance with message `"Lua compile error: <details>"`.
+
+2. **Lua Runtime Errors**:
+   - **Trigger**: Explicit calls to `error('msg')`, type errors (e.g. attempting to index `nil`), or math errors in Lua code.
+   - **Conversion**: Trapped inside Ottavino's `Executor` and converted into a NAPI JS `Error` with message `"Lua runtime error: <details>"`.
+
+3. **Trapping Errors inside Lua**:
+   - Lua code can use the built-in `pcall(function, args...)` function to catch errors inside Lua without bubbling a NAPI JS exception to host code.
+
+```typescript
+try {
+  lua.eval("error('Database failure!')");
+} catch (err: any) {
+  console.log(err.message); // "Lua runtime error: lua error: Database failure!"
+}
+```

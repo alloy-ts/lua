@@ -79,7 +79,7 @@ node --import @oxc-node/core/register examples/stdlib.ts
 
 ## Documentation
 
-- [`docs/api.md`](docs/api.md) — Detailed JS/TS API reference for `@alloy-ts/lua` and mapping to Ottavino Rust types.
+- [`docs/api.md`](docs/api.md) — Detailed JS/TS API reference, mapping of all 13 core Ottavino Rust types, and cross-boundary exception conversion rules.
 - [`docs/lang-guide.md`](docs/lang-guide.md) — Comprehensive guide covering Lua 5.4 language basics, standard library modules, Ottavino/Piccolo stackless architecture, fuel pacing, pre-emptive tasklets, symmetric coroutines (`coroutine.yieldto`), and sandboxing controls.
 
 ### Summary of `Lua` Methods
