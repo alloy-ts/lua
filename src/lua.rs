@@ -3,6 +3,13 @@ use napi::Env;
 use napi_derive::napi;
 use ottavino::{Context, Lua as OLua, Value as OValue};
 
+/// Snapshot of GC metrics from the Lua arena.
+#[napi(object)]
+pub struct GcMetrics {
+    pub total_allocation: f64,
+    pub allocation_debt: f64,
+}
+
 fn lua_value_to_js<'a, 'gc>(
     env: &Env,
     ctx: Context<'gc>,
@@ -149,6 +156,28 @@ impl Lua {
     #[napi]
     pub fn load_io(&mut self) {
         self.inner.load_io();
+    }
+
+    /// Total memory used by this Lua instance, in bytes.
+    #[napi]
+    pub fn total_memory(&self) -> f64 {
+        self.inner.total_memory() as f64
+    }
+
+    /// Trigger a full garbage collection cycle in Lua.
+    #[napi]
+    pub fn gc_collect(&mut self) {
+        self.inner.gc_collect();
+    }
+
+    /// Get current garbage collector metrics.
+    #[napi]
+    pub fn gc_metrics(&self) -> GcMetrics {
+        let m = self.inner.gc_metrics();
+        GcMetrics {
+            total_allocation: m.total_allocation() as f64,
+            allocation_debt: m.allocation_debt(),
+        }
     }
 
     /// Evaluate a string of Lua code and return the result.

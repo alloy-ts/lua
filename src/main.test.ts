@@ -49,3 +49,15 @@ test("Lua factories (core, empty)", () => {
   luaEmpty.loadCore();
   expect(luaEmpty.eval("return math.sqrt(16)")).toBe(4);
 });
+
+test("Lua memory and GC methods", () => {
+  const lua = new Lua();
+  expect(typeof lua.totalMemory()).toBe("number");
+  expect(lua.totalMemory()).toBeGreaterThan(0);
+
+  const metrics = lua.gcMetrics();
+  expect(typeof metrics.totalAllocation).toBe("number");
+  expect(typeof metrics.allocationDebt).toBe("number");
+
+  expect(() => lua.gcCollect()).not.toThrow();
+});
