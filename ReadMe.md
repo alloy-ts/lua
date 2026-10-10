@@ -5,8 +5,21 @@
 
 This library uses [NAPI-RS](https://napi.rs/) and
 [Ottavino](https://github.com/kyren/ottavino) (a pure Rust Lua 5.4 VM
-implementation) to safely expose Lua's API to Node.js and JavaScript
+implementation, forked from Piccolo) to safely expose Lua's API to Node.js and JavaScript
 environments without external native C dependencies.
+
+## Architecture & Design Highlights
+
+Unlike traditional C-based Lua runtimes that rely on the native C call stack, Ottavino operates as a **stackless (trampoline) interpreter** powered by `gc-arena`.
+
+Key benefits of this design include:
+- **Stackless Interpreter Design:** Long-running computations and call stacks are reified into heap-allocated state machines, driven by step polling (`Executor::step`).
+- **Cancellation & Sandboxing:** Execution can be safely interrupted or canceled at any time without holding the host thread hostage.
+- **Pre-emptive Concurrency & Fuel Pacing:** VM execution is strictly paced by a decrementing `Fuel` budget, allowing multiple sandboxed scripts to run in a round-robin schedule without blocking the host event loop.
+- **Symmetric Coroutines:** Out-of-the-box support for `coroutine.yieldto`, enabling direct coroutine jumps without stack accumulation.
+- **Safe Tracing GC:** Built on `gc-arena`, maintaining safety guarantees without unsafe stack pointers.
+
+For detailed architecture topics, read our **[Ottavino Architecture Guide](docs/ottavino-architecture.md)** and **[API Reference](docs/api.md)**.
 
 ## Features
 
@@ -52,7 +65,29 @@ console.log(`Memory used: ${lua.totalMemory()} bytes`);
 lua.gcCollect();
 ```
 
+## Examples
+
+We provide runnable TypeScript examples demonstrating various features with `oxc-node`:
+
+- `examples/primitives.ts` — Primitive types, JS variables, and Lua constants.
+- `examples/object.ts` — Defining and manipulating Lua objects (tables) and arrays from JS/TS objects.
+- `examples/variables.ts` — Comprehensive guide merging primitives, constants, variables, and nested objects.
+- `examples/memory.ts` — Memory allocation tracking and GC controls (`totalMemory()`, `gcCollect()`, `gcMetrics()`).
+- `examples/stdlib.ts` — Sandboxing with standard libraries (`Lua.empty()`, `Lua.core()`, `Lua.full()`, `loadCore()`, `loadIo()`).
+
+Run examples using `node --import @oxc-node/core`:
+
+```bash
+node --import @oxc-node/core examples/primitives.ts
+node --import @oxc-node/core examples/object.ts
+node --import @oxc-node/core examples/variables.ts
+node --import @oxc-node/core examples/memory.ts
+node --import @oxc-node/core examples/stdlib.ts
+```
+
 ## API Reference
+
+For the full comparison between Ottavino's underlying Rust crate API and the exposed NAPI bindings, see **[docs/api.md](docs/api.md)**.
 
 ### Constructors
 
