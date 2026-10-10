@@ -170,11 +170,14 @@ impl Lua {
     /// Create a new `Lua` instance with the full stdlib loaded.
     #[napi(constructor)]
     pub fn new() -> Self {
+        let mut lua = OLua::full();
+        lua.load_core();
+        lua.load_io();
         Lua {
             exec: None,
             inner: Arc::new(Inner {
                 handles: Arc::new(Mutex::new(Vec::new())),
-                lua: UnsafeCell::new(OLua::full()),
+                lua: UnsafeCell::new(lua),
             }),
         }
     }
@@ -194,11 +197,13 @@ impl Lua {
     /// Create a `Lua` instance with the core (non-I/O) stdlib loaded.
     #[napi(factory)]
     pub fn core() -> Self {
+        let mut lua = OLua::core();
+        lua.load_core();
         Lua {
             exec: None,
             inner: Arc::new(Inner {
                 handles: Arc::new(Mutex::new(Vec::new())),
-                lua: UnsafeCell::new(OLua::core()),
+                lua: UnsafeCell::new(lua),
             }),
         }
     }
@@ -206,11 +211,14 @@ impl Lua {
     /// Create a `Lua` instance with the full stdlib loaded.
     #[napi(factory)]
     pub fn full() -> Self {
+        let mut lua = OLua::full();
+        lua.load_core();
+        lua.load_io();
         Lua {
             exec: None,
             inner: Arc::new(Inner {
                 handles: Arc::new(Mutex::new(Vec::new())),
-                lua: UnsafeCell::new(OLua::full()),
+                lua: UnsafeCell::new(lua),
             }),
         }
     }
@@ -644,31 +652,6 @@ impl Lua {
         }
     }
 
-    /// Register a host (JavaScript) callback under `name`, callable from Lua as a
-    /// global function.
-    ///
-    /// When Lua invokes it, the JS function runs synchronously (re-entrant) with
-    /// the converted Lua arguments, and its return value is converted back into
-    /// Lua. Re-registering the same name overwrites the previous callback.
-    #[napi]
-    pub fn register<'js>(
-        &mut self,
-        env: &'js Env,
-        name: String,
-        func: Unknown<'js>,
-    ) -> Result<(), NapiError> {
-        let handles = self.inner.handles.clone();
-        self.inner
-            .arena()
-            .enter(|ctx| -> Result<(), NapiError> {
-                let callback = make_host_callback(env, ctx, &handles, &func);
-                let key = ctx.intern(name.as_bytes());
-                ctx.globals()
-                    .set(ctx, key, ottavino::Value::from(callback))
-                    .map(|_| ())
-                    .map_err(|e| NapiError::from_reason(e.to_string()))
-            })
-    }
 
     /// Runs the function to completion inside a single `enter` (mirroring
     /// `Lua::finish`'s step loop) and converts each return value.
@@ -907,13 +890,6 @@ fn thread_mode_str(m: ThreadMode) -> String {
     .to_string()
 }
 
-/// Wrap a handle struct into an `Unknown` JS value.
-fn handle_to_unknown<'js, T: ToNapiValue>(
-    env: &'js Env,
-    h: T,
-) -> Result<Unknown<'js>, NapiError> {
-    h.into_unknown(env)
-}
 
 fn ottavino_value_to_js<'js, 'gc>(
     env: &'js Env,
@@ -930,25 +906,40 @@ fn ottavino_value_to_js<'js, 'gc>(
             let str_val = String::from_utf8_lossy(s.as_bytes());
             env.create_string(&str_val)?.into_unknown(env)
         }
-        ottavino::Value::Table(_) => {
-            let id = handles.len() as u32;
-            handles.push(ctx.stash(val));
-            handle_to_unknown(env, LuaTable { id })
+        ottavino::Value::Table(t) => {
+            let len = t.length();
+            if len > 0 {
+                let mut js_arr = env.create_array(len as u32)?;
+                for i in 1..=len {
+                    let v = t.get_value(ctx, i);
+                    let js_v = ottavino_value_to_js(env, ctx, handles, v)?;
+                    js_arr.set_element((i - 1) as u32, js_v)?;
+                }
+                js_arr.into_unknown(env)
+            } else {
+                let mut js_obj = unsafe { Object::from_napi_value(env.raw(), {
+                    let mut raw_obj = ptr::null_mut();
+                    sys::napi_create_object(env.raw(), &mut raw_obj);
+                    raw_obj
+                })? };
+                let mut curr_key = ottavino::Value::Nil;
+                while let ottavino::table::NextValue::Found { key, value } = t.next(curr_key) {
+                    curr_key = key;
+                    let js_k = ottavino_value_to_js(env, ctx, handles, key)?;
+                    let js_v = ottavino_value_to_js(env, ctx, handles, value)?;
+                    js_obj.set_property(js_k, js_v)?;
+                }
+                js_obj.into_unknown(env)
+            }
         }
         ottavino::Value::Function(_) => {
-            let id = handles.len() as u32;
-            handles.push(ctx.stash(val));
-            handle_to_unknown(env, LuaFunction { id })
+            env.create_string("[lua function]")?.into_unknown(env)
         }
         ottavino::Value::Thread(_) => {
-            let id = handles.len() as u32;
-            handles.push(ctx.stash(val));
-            handle_to_unknown(env, LuaThread { id })
+            env.create_string("[lua thread]")?.into_unknown(env)
         }
         ottavino::Value::UserData(_) => {
-            let id = handles.len() as u32;
-            handles.push(ctx.stash(val));
-            handle_to_unknown(env, LuaUserData { id })
+            env.create_string("[lua userdata]")?.into_unknown(env)
         }
     }
 }
@@ -1093,7 +1084,7 @@ fn make_host_callback<'gc>(
         let seq = HOST_CALLBACKS.with(|cell| {
             let guard = cell.borrow();
             let Some((func_ref, env)) = guard.get(id as usize).and_then(|o| o.as_ref()) else {
-                return None;
+                return Ok(None);
             };
             let mut func_val = ptr::null_mut();
             unsafe {
@@ -1116,23 +1107,32 @@ fn make_host_callback<'gc>(
             match call_js_function(env, &func, &js_args) {
                 Ok(result) => {
                     if is_promise(env, &result) {
-                        return Some(build_promise_sequence(ctx, env, &result, &handles));
+                        return Ok(Some(build_promise_sequence(ctx, env, &result, &handles)));
                     }
                     match js_to_ottavino_value(env, ctx, &handles, result) {
                         Ok(val) => {
                             stack.clear();
                             stack.push_back(val);
+                            Ok(None)
                         }
-                        Err(_) => stack.clear(),
+                        Err(e) => {
+                            let s = e.to_string();
+                            let msg = ctx.intern(s.as_bytes());
+                            Err(ottavino::Error::from_value(ottavino::Value::String(msg)))
+                        }
                     }
                 }
-                Err(_) => stack.clear(),
+                Err(e) => {
+                    let s = e.to_string();
+                    let msg = ctx.intern(s.as_bytes());
+                    Err(ottavino::Error::from_value(ottavino::Value::String(msg)))
+                }
             }
-            None
         });
         match seq {
-            Some(s) => Ok(CallbackReturn::Sequence(s)),
-            None => Ok(CallbackReturn::Return),
+            Ok(Some(s)) => Ok(CallbackReturn::Sequence(s)),
+            Ok(None) => Ok(CallbackReturn::Return),
+            Err(e) => Err(e),
         }
     })
 }

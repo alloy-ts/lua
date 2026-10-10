@@ -12,12 +12,12 @@ describe("Lua constructors", () => {
     expect(lua).toBeDefined();
     expect(typeof lua.eval).toBe("function");
     expect(lua.eval("return 1 + 1")).toBe(2);
-    // A default instance ships with the I/O library.
-    expect(lua.eval("return io ~= nil")).toBe(true);
+    // A default instance ships with the I/O library (print).
+    expect(lua.eval("return print ~= nil")).toBe(true);
   });
 
   test("Lua.full() exposes the I/O library", () => {
-    expect(Lua.full().eval("return io ~= nil")).toBe(true);
+    expect(Lua.full().eval("return print ~= nil")).toBe(true);
   });
 
   test("Lua.core() omits the I/O library", () => {
@@ -93,28 +93,28 @@ describe("Lua.eval - value conversion", () => {
 });
 
 describe("global variables", () => {
-  test("setGlobal / getGlobal round-trip scalars", () => {
+  test("globals().set / globals().get round-trip scalars", () => {
     const lua = Lua.full();
-    lua.setGlobal("num", 10);
-    lua.setGlobal("str", "hi");
-    lua.setGlobal("flag", true);
+    lua.globals().set("num", 10);
+    lua.globals().set("str", "hi");
+    lua.globals().set("flag", true);
 
-    expect(lua.getGlobal("num")).toBe(10);
-    expect(lua.getGlobal("str")).toBe("hi");
-    expect(lua.getGlobal("flag")).toBe(true);
+    expect(lua.globals().get("num")).toBe(10);
+    expect(lua.globals().get("str")).toBe("hi");
+    expect(lua.globals().get("flag")).toBe(true);
   });
 
   test("globals set from JS are visible to later eval calls", () => {
     const lua = Lua.full();
-    lua.setGlobal("multiplier", 3);
+    lua.globals().set("multiplier", 3);
     expect(lua.eval("return multiplier * 4")).toBe(12);
   });
 
   test("nested tables round-trip through globals (1-indexed arrays)", () => {
     const lua = Lua.full();
-    lua.setGlobal("cfg", { db: { host: "localhost" }, ports: [1, 2, 3] });
+    lua.globals().set("cfg", { db: { host: "localhost" }, ports: [1, 2, 3] });
 
-    expect(lua.getGlobal("cfg")).toEqual({
+    expect(lua.globals().get("cfg")).toEqual({
       db: { host: "localhost" },
       ports: [1, 2, 3],
     });
@@ -122,15 +122,29 @@ describe("global variables", () => {
     expect(lua.eval("return cfg.ports[2]")).toBe(2);
   });
 
-  test("a global defined in Lua is readable via getGlobal", () => {
+  test("a global defined in Lua is readable via globals().get", () => {
     const lua = Lua.full();
     lua.eval("shared = 'from lua'");
-    expect(lua.getGlobal("shared")).toBe("from lua");
+    expect(lua.globals().get("shared")).toBe("from lua");
   });
 
   test("an unset global returns undefined", () => {
     const lua = Lua.full();
-    expect(lua.getGlobal("does_not_exist")).toBeUndefined();
+    expect(lua.globals().get("does_not_exist")).toBeUndefined();
+  });
+
+  test("JS callbacks set via globals().set can be executed from Lua", () => {
+    const lua = Lua.full();
+    lua.globals().set("add", (a: number, b: number) => a + b);
+    expect(lua.eval("return add(10, 20)")).toBe(30);
+  });
+
+  test("JS callback errors propagate as Lua errors", () => {
+    const lua = Lua.full();
+    lua.globals().set("fail", () => {
+      throw new Error("JS error");
+    });
+    expect(() => lua.eval("fail()")).toThrow();
   });
 });
 
@@ -154,8 +168,9 @@ describe("standard-library loading", () => {
   test("loadIo() enables the I/O library", () => {
     const lua = Lua.empty();
     lua.loadCore();
+    expect(lua.eval("return print ~= nil")).toBe(false);
     lua.loadIo();
-    expect(lua.eval("return io ~= nil")).toBe(true);
+    expect(lua.eval("return print ~= nil")).toBe(true);
   });
 });
 
