@@ -75,11 +75,41 @@ const total = lua.eval("return calculateTotal(items, taxRate)");
 console.log("Calculated total:", total); // 220
 ```
 
-See [examples/function.ts](examples/function.ts) for a runnable function and closure example. Run examples with:
+See [examples/function.ts](examples/function.ts) for a runnable function and closure example.
+
+### 3. Asynchronous Execution & Coroutines with JS Promises
+
+Lua natively supports cooperative multitasking via **Coroutines**. You can yield values from Lua coroutines back to JavaScript Promises (e.g. for async I/O or DB requests) and resume Lua execution once the async data resolves:
+
+```typescript
+import { Lua } from "@lib/module";
+
+const lua = Lua.full();
+
+// Define a Lua coroutine that yields async requests
+lua.eval(`
+  co = coroutine.create(function()
+    local user = coroutine.yield({ action = "FETCH_USER", id = 42 })
+    return "Completed for " .. user.name
+  end)
+`);
+
+// Step 1: Resume coroutine and receive yield payload
+const [_, request] = lua.eval("return { coroutine.resume(co) }");
+
+// Step 2: Perform async operation in TS and resume Lua coroutine
+const userData = await fetchUserAsync(request.id);
+lua.setGlobal("resumedVal", userData);
+const [__, result] = lua.eval("return { coroutine.resume(co, resumedVal) }");
+console.log(result); // "Completed for Alice"
+```
+
+See [examples/async.ts](examples/async.ts) for a runnable async coroutine example. Run examples with:
 
 ```bash
 node --import @oxc-node/core examples/globals.ts
 node --import @oxc-node/core examples/function.ts
+node --import @oxc-node/core examples/async.ts
 ```
 
 ## Features
