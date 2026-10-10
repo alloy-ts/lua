@@ -1,30 +1,30 @@
 import { Lua } from "../src/main.ts";
 
 function main() {
+  console.log("=== Demo: Defining Lua Object / Table from TS ===");
   const lua = Lua.core();
 
-  // Define global variables in the Lua environment
-  lua.setGlobal("appName", "My TypeScript App");
-  lua.setGlobal("version", "1.0.0");
+  lua.setGlobal("appName", "TypeScript Lua Runner");
+  lua.setGlobal("env", "production");
 
-  // Define a Lua table / object directly using Lua code
+  // Define a Lua table / object with methods and properties
   lua.eval(`
-    User = {
-      name = "Alice",
-      role = "Admin",
-      greet = function(self)
-        return "Hello " .. self.name .. " (" .. self.role .. ") from " .. appName
+    Config = {
+      timeout = 5000,
+      debug = false,
+      getInfo = function(self)
+        return appName .. " [env=" .. env .. ", timeout=" .. tostring(self.timeout) .. "ms]"
       end
     }
   `);
 
-  // Evaluate methods on the defined Lua object
-  const greeting = lua.eval("return User:greet()");
-  console.log("Greeting result:", greeting);
+  // Invoke method on Lua object
+  const info = lua.eval("return Config:getInfo()");
+  console.log("Config.getInfo() result:", info);
 
-  // Evaluate property access on the object
-  const role = lua.eval("return User.role");
-  console.log("User role:", role);
+  // Read property on Lua object
+  const timeout = lua.eval("return Config.timeout");
+  console.log("Config.timeout property:", timeout);
 }
 
 main();
