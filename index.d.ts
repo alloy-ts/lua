@@ -9,4 +9,38 @@
  */
 export declare const __napiBindingTarget: 'native' | 'wasm32-wasi' | 'wasm32-wasip1'
 
-export declare function add(left: number, right: number): number
+/** A Lua execution environment exported to JavaScript/TypeScript via NAPI. */
+export declare class Lua {
+  /** Create a new `Lua` instance with the full stdlib loaded. */
+  constructor()
+  /** Create a `Lua` instance with no parts of the stdlib loaded. */
+  static empty(): Lua
+  /** Create a `Lua` instance with the core (non-I/O) stdlib loaded. */
+  static core(): Lua
+  /** Create a `Lua` instance with the full stdlib loaded. */
+  static full(): Lua
+  /** Load the core stdlib (base, coroutine, math, string, table). */
+  loadCore(): void
+  /** Load the I/O stdlib. */
+  loadIo(): void
+  /** Size of memory used by this Lua context, in bytes. */
+  totalMemory(): number
+  /** Run garbage collection cycle. */
+  gcCollect(): void
+  /** Get garbage collector metrics. */
+  gcMetrics(): GcMetrics
+  /** Evaluate Lua code string and return the result as a JavaScript value. */
+  eval(code: string): unknown
+  /** Get a global variable from Lua environment by name. */
+  getGlobal(name: string): unknown
+  /** Set a global variable in Lua environment by name. */
+  setGlobal(name: string, value: unknown): void
+}
+
+/** Snapshot of GC metrics. */
+export interface GcMetrics {
+  /** Total bytes tracked by the allocator. */
+  totalAllocation: number
+  /** Current allocation debt. */
+  allocationDebt: number
+}
