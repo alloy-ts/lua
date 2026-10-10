@@ -1,10 +1,22 @@
 # API Reference
 
-The primary export of `@alloy-ts/lua` is the `Lua` class. It exposes a sandboxed Lua 5.4 execution environment powered by the [Ottavino](https://github.com/kyren/ottavino) pure-Rust VM and exposed via NAPI.
+The primary export of `@alloy-ts/lua` is the `Lua` class. It exposes a sandboxed Lua 5.4 execution environment powered by the [Ottavino](https://github.com/kyren/ottavino) pure-Rust VM (derived from Piccolo and `gc-arena`) and exposed via NAPI.
 
 ```typescript
 import { Lua } from "@alloy-ts/lua";
 ```
+
+---
+
+## API Coverage Summary
+
+Every public method exposed by the native Ottavino binding is fully mapped into TypeScript:
+
+* **Constructors & Factories**: `new Lua()`, `Lua.full()`, `Lua.core()`, `Lua.empty()`
+* **Code Execution**: `lua.eval(code)`
+* **Global Variable Management**: `lua.setGlobal(name, value)`, `lua.getGlobal(name)`
+* **Standard Library Management**: `lua.loadCore()`, `lua.loadIo()`
+* **Memory & Garbage Collection**: `lua.totalMemory()`, `lua.gcCollect()`, `lua.gcMetrics()`
 
 ---
 
@@ -39,7 +51,7 @@ const luaEmpty = Lua.empty();
 
 ---
 
-### Instance Methods
+### Code Execution
 
 #### `lua.eval(code: string): unknown`
 Compiles and executes a string of Lua code. Returns the result as a JavaScript value converted from the returned Lua value.
@@ -51,6 +63,10 @@ Compiles and executes a string of Lua code. Returns the result as a JavaScript v
 ```typescript
 const sum = lua.eval("return 10 + 20"); // 30
 ```
+
+---
+
+### Global Variable Management
 
 #### `lua.setGlobal(name: string, value: unknown): void`
 Binds a JavaScript value as a global variable in the Lua environment.
@@ -70,8 +86,12 @@ Retrieves a global variable from the Lua environment by name.
 * **Returns**: The converted JavaScript representation of the Lua global variable.
 
 ```typescript
-const port = lua.getGlobal("appName"); // "AlloyApp"
+const appName = lua.getGlobal("appName"); // "AlloyApp"
 ```
+
+---
+
+### Standard Library Management
 
 #### `lua.loadCore(): void`
 Loads core standard libraries (base, coroutine, math, string, table) into an existing `Lua` instance.
@@ -87,6 +107,10 @@ Loads the I/O standard library into an existing `Lua` instance.
 ```typescript
 lua.loadIo();
 ```
+
+---
+
+### Memory & Garbage Collection
 
 #### `lua.totalMemory(): number`
 Returns the total memory currently allocated and tracked by the Lua VM in bytes.

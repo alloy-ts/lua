@@ -1,6 +1,6 @@
 # Lua 5.4 Language & Standard Library Guide
 
-This guide provides an overview of Lua 5.4 fundamentals, its standard library modules, and the features added by the **Ottavino** Lua VM implementation embedded in `@alloy-ts/lua`.
+This guide provides an overview of Lua 5.4 fundamentals, its standard library modules, and the architecture of the **Ottavino** (derived from Piccolo and `gc-arena`) pure-Rust Lua VM embedded in `@alloy-ts/lua`.
 
 ---
 
@@ -107,10 +107,11 @@ Utilities for sequential tables (arrays):
 * `table.pack(...)` / `table.unpack(t)`: Packs / unpacks argument lists.
 
 ### Coroutine Library (`coroutine`)
-Cooperative multitasking and yield/resume controls:
+Cooperative multitasking, symmetric yielding, and resume controls:
 * `coroutine.create(fn)`: Creates a new coroutine thread.
 * `coroutine.resume(co, ...)`: Resumes execution of a coroutine until the next yield or return.
 * `coroutine.yield(...)`: Suspends execution and yields values back to `resume`.
+* `coroutine.yieldto(co, ...)`: **Symmetric Coroutine Yield:** Direct tail-yield to another target coroutine without stack frame leaks.
 * `coroutine.status(co)`: Returns `"suspended"`, `"running"`, `"normal"`, or `"dead"`.
 
 ### I/O Library (`io`)
@@ -119,29 +120,29 @@ File operations and standard input/output streams:
 
 ---
 
-## 3. What Ottavino Adds
+## 3. Ottavino (Piccolo) VM Architecture & Unique Capabilities
 
-[Ottavino](https://github.com/kyren/ottavino) is a pure-Rust, garbage-collected implementation of the Lua 5.4 VM. It introduces several distinct advantages and features when exposed to JavaScript via NAPI:
+[Ottavino](https://github.com/kyren/ottavino) (a fork of Piccolo) is a pure-Rust, garbage-collected implementation of the Lua 5.4 VM. It introduces key architectural innovations that distinguish it from classical C Lua implementations.
 
-### 1. Pure Rust & Safe Execution
-* **Zero External C Dependencies:** Eliminates security vulnerabilities and cross-compilation friction associated with C code or native pointers.
-* **Memory Safety:** Memory is safely tracked in Rust memory arenas (`gc-arena`).
+### A "Stackless" Interpreter Design
+Standard C Lua implementations (like PUC-Rio Lua) rely on the C function call stack (`luaV_execute`, `lua_call`). This makes yielding from inside C callbacks difficult, as yielding across C frames relies on `longjmp`, which destroys stack frames.
 
-### 2. Fine-Grained Sandboxing Controls
-Unlike standard C Lua which loads everything by default, Ottavino lets host applications control standard library access:
-* `Lua.empty()`: No stdlib loaded — prevents any ambient environment access.
-* `Lua.core()`: Core libraries loaded (base, math, string, table, coroutine) — excludes I/O for safe script evaluation.
-* `Lua.full()`: Core + I/O libraries loaded.
-* `loadCore()` / `loadIo()`: Incrementally load capabilities into a sandboxed VM on demand.
+In contrast, Ottavino utilizes a **"stackless" (trampoline style) VM loop**. Execution state is reified into VM objects polled by step loops. Control flow always returns back to the step executor.
 
-### 3. Direct Memory Tracking & GC Controls
-Ottavino exposes VM memory tracking directly to host languages (TypeScript/JS):
-* `lua.totalMemory()`: Query exact byte consumption of the Lua VM.
-* `lua.gcCollect()`: Host-driven full garbage collection cycle.
-* `lua.gcMetrics()`: Monitor internal GC allocation debt and total allocation tracking.
+### Key Benefits of the Stackless Design
 
-### 4. Seamless NAPI Bridge
-Ottavino's value types seamlessly marshal between JavaScript primitives/objects and Lua VM values:
-* JS Numbers automagically map to Lua `integer` or `float`.
-* JS Objects map to Lua keyed tables; JS Arrays map to Lua 1-indexed sequential tables.
-* JS `undefined` / `null` map to Lua `nil`.
+#### 1. Bounded Execution & Cancellation
+Because the interpreter runs via polling loops, execution can be canceled at bounded instruction boundaries ("fuel") without corrupting VM state or destroying native C stacks.
+
+#### 2. Pre-emptive Concurrency & Tasklets
+Multiple Lua execution instances ("tasklets") can be multiplexed in round-robin fashion by polling each executor for a slice of "fuel". This achieves pre-emptive multitasking across Lua scripts without requiring scripts to cooperatively yield.
+
+#### 3. Fuel, Pacing, and Custom Scheduling
+Execution is paced using a `Fuel` budget. Host environments can allocate fuel quotas (e.g. per frame or per second) to limit CPU consumption by untrusted or looping Lua scripts.
+
+#### 4. Symmetric Coroutines and `coroutine.yieldto`
+Standard Lua coroutines are asymmetric (they yield only to their caller). Attempting to yield directly to another coroutine in standard C Lua causes stack frame accumulation (stack leak).
+Because Ottavino's control flow is trampoline-based, it natively provides **symmetric coroutines** via `coroutine.yieldto(target_co, ...)`—enabling direct tail-yielding between coroutines without stack leaks.
+
+### The "Big Lie": C Lua vs. Ottavino
+In C Lua, yielding from nested C callbacks requires rewriting code with continuation functions (`lua_callk` / `lua_yieldk`), which is notoriously difficult to write safely due to `longjmp` stack unwinding. Ottavino solves this at the VM architecture level by managing all state through `gc-arena` ("Mutation XOR Collection" safe garbage collection) without C stack dependencies.
