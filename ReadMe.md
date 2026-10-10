@@ -13,7 +13,9 @@ To support embedded Lua in TypeScript/JavaScript via NAPI:
 3. **Type Conversion**: JS primitives (`number`, `string`, `boolean`, `null/undefined`) and structures (`object`, `array`) are mapped bidirectionally to Lua types (`integer`, `number`, `string`, `table`, `nil`).
 4. **Exported API**: The `Lua` class is exported via NAPI to TypeScript/JavaScript, providing methods to evaluate code, manage global variables, load standard libraries, and control garbage collection.
 
-## Defining Lua Variables, Objects & Constants from TS/JS
+## Examples & Usage
+
+### 1. Defining Lua Variables, Objects & Constants from TS/JS
 
 You can define Lua global variables, primitives, objects, and read-only constants from TypeScript using `lua.setGlobal(name, value)` and `lua.eval()`:
 
@@ -22,32 +24,21 @@ import { Lua } from "@lib/module";
 
 const lua = Lua.full();
 
-// 1. Primitive Variables (number, string, boolean, null)
+// Set Primitives (number, string, boolean, null)
 lua.setGlobal("MAX_CONNECTIONS", 100);
 lua.setGlobal("APP_NAME", "Lua Engine");
-lua.setGlobal("DEBUG_MODE", true);
 
-// 2. Objects & Arrays (Converted to Lua tables)
+// Set Objects & Arrays (Converted to Lua tables)
 lua.setGlobal("user", {
   id: 101,
   username: "alice",
-  profile: { firstName: "Alice", age: 28 },
   roles: ["admin", "developer"],
 });
 
-// Modify object fields inside Lua
-lua.eval(`
-  user.profile.age = 29
-  table.insert(user.roles, "lead")
-`);
-
-// Fetch updated object back in JS/TS
-const updatedUser = lua.getGlobal("user");
-
-// 3. Read-Only Constants (Protected via Lua metatables)
+// Read-Only Constants (Protected via Lua metatables)
 lua.eval(`
   CONSTANTS = setmetatable({}, {
-    __index = { MAX_RETRIES = 5, ENVIRONMENT = "production" },
+    __index = { MAX_RETRIES = 5 },
     __newindex = function(_, key, _)
       error("Attempt to modify read-only constant: " .. tostring(key), 2)
     end
@@ -55,10 +46,40 @@ lua.eval(`
 `);
 ```
 
-See [examples/globals.ts](examples/globals.ts) for a complete runnable example demonstrating primitives, variables, objects, arrays, constants, and OOP objects. Run it with:
+See [examples/globals.ts](examples/globals.ts) for a runnable variables and constants example.
+
+### 2. Defining & Calling Lua Functions from TS/JS
+
+Lua functions, closures, and recursive functions can be defined and executed using `lua.eval()`:
+
+```typescript
+import { Lua } from "@lib/module";
+
+const lua = Lua.full();
+
+// Define a function in Lua
+lua.eval(`
+  function calculateTotal(items, taxRate)
+    local total = 0
+    for _, item in ipairs(items) do
+      total = total + item.price * item.quantity
+    end
+    return total * (1 + taxRate)
+  end
+`);
+
+// Pass parameters from TS and invoke the function
+lua.setGlobal("items", [{ price: 100, quantity: 2 }]);
+lua.setGlobal("taxRate", 0.1);
+const total = lua.eval("return calculateTotal(items, taxRate)");
+console.log("Calculated total:", total); // 220
+```
+
+See [examples/function.ts](examples/function.ts) for a runnable function and closure example. Run examples with:
 
 ```bash
 node --import @oxc-node/core examples/globals.ts
+node --import @oxc-node/core examples/function.ts
 ```
 
 ## Features
