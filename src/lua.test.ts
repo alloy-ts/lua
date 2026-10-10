@@ -2,8 +2,10 @@ import { describe, expect, test } from "vite-plus/test";
 import { runCoroutineDemo } from "../examples/coroutine.ts";
 import { runFunctionDemo } from "../examples/function.ts";
 import { runGlobalsDemo } from "../examples/globals.ts";
+import { runMemoryDemo } from "../examples/memory.ts";
 import { runMetatableDemo } from "../examples/metatable.ts";
 import { runDemo } from "../examples/object.ts";
+import { runStdlibDemo } from "../examples/stdlib.ts";
 import { Lua } from "./main.ts";
 
 // Exercises the public `Lua` API backed by the Rust/ottavino NAPI binding
@@ -251,5 +253,26 @@ describe("examples/metatable.ts demo", () => {
     expect(res.v3Str).toBe("Vector(15, 35)");
     expect(res.dogSpeak).toBe("Rex makes a woof");
     expect(res.dogBreed).toBe("German Shepherd");
+  });
+});
+
+describe("examples/memory.ts demo", () => {
+  test("runMemoryDemo executes successfully and reports memory usage", () => {
+    const res = runMemoryDemo();
+    expect(res.initialMemory).toBeGreaterThan(0);
+    expect(res.memoryAfterAlloc).toBeGreaterThan(res.initialMemory);
+    expect(typeof res.memoryAfterGC).toBe("number");
+  });
+});
+
+describe("examples/stdlib.ts demo", () => {
+  test("runStdlibDemo executes successfully and verifies library loading", () => {
+    const res = runStdlibDemo();
+    expect(res.mathExpr).toBe(7);
+    expect(res.typeErrorOccurred).toBe(true);
+    expect(res.typeVal).toBe("number");
+    expect(res.stringUpper).toBe("HELLO");
+    expect(res.coreMath).toBe(4);
+    expect(res.fullMath).toBe(4);
   });
 });
