@@ -17,8 +17,24 @@ export declare class Lua {
   static core(): Lua
   /** Create an empty `Lua` instance. */
   static empty(): Lua
+  /** Load the core parts of the stdlib (non-I/O). */
+  loadCore(): void
+  /** Load the I/O parts of the stdlib. */
+  loadIo(): void
+  /** Size of all memory used by this Lua context, in bytes. */
+  totalMemory(): number
+  /** Perform a full garbage collection cycle. */
+  gcCollect(): void
+  /** Get garbage collector metrics. */
+  gcMetrics(): GcMetrics
   /** Set a global variable or constant in the Lua environment from a JS value (primitive or object). */
   setGlobal(name: string, value: unknown): void
   /** Evaluate a Lua script/expression string and return the result value converted to JS. */
   eval(code: string): unknown
+}
+
+/** Snapshot of GC Metrics. */
+export interface GcMetrics {
+  totalAllocation: number
+  allocationDebt: number
 }

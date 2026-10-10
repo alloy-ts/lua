@@ -16,6 +16,13 @@ fn to_napi_err<E: std::fmt::Display>(e: E) -> NapiError {
     NapiError::from_reason(e.to_string())
 }
 
+/// Snapshot of GC Metrics.
+#[napi(object)]
+pub struct GcMetrics {
+    pub total_allocation: f64,
+    pub allocation_debt: f64,
+}
+
 enum JsVal {
     Nil,
     Boolean(bool),
@@ -172,6 +179,40 @@ impl Lua {
     pub fn empty() -> Self {
         Lua {
             inner: OLua::empty(),
+        }
+    }
+
+    /// Load the core parts of the stdlib (non-I/O).
+    #[napi(js_name = "loadCore")]
+    pub fn load_core(&mut self) {
+        self.inner.load_core();
+    }
+
+    /// Load the I/O parts of the stdlib.
+    #[napi(js_name = "loadIo")]
+    pub fn load_io(&mut self) {
+        self.inner.load_io();
+    }
+
+    /// Size of all memory used by this Lua context, in bytes.
+    #[napi(js_name = "totalMemory")]
+    pub fn total_memory(&self) -> f64 {
+        self.inner.total_memory() as f64
+    }
+
+    /// Perform a full garbage collection cycle.
+    #[napi(js_name = "gcCollect")]
+    pub fn gc_collect(&mut self) {
+        self.inner.gc_collect();
+    }
+
+    /// Get garbage collector metrics.
+    #[napi(js_name = "gcMetrics")]
+    pub fn gc_metrics(&self) -> GcMetrics {
+        let m = self.inner.gc_metrics();
+        GcMetrics {
+            total_allocation: m.total_allocation() as f64,
+            allocation_debt: m.allocation_debt(),
         }
     }
 
