@@ -489,7 +489,22 @@ impl Lua {
                     if status == napi::sys::Status::napi_ok {
                         unsafe { Unknown::from_napi_value(env_raw, return_val) }
                     } else {
-                        Err(NapiError::from_reason("JS function call failed"))
+                        let mut js_exception = std::ptr::null_mut();
+                        unsafe {
+                            napi::sys::napi_get_and_clear_last_exception(env_raw, &mut js_exception);
+                        }
+                        let err_msg = if !js_exception.is_null() {
+                            match unsafe { Unknown::from_napi_value(env_raw, js_exception) } {
+                                Ok(js_val) => match js_val.coerce_to_string() {
+                                    Ok(js_str) => js_str.into_utf8().map(|s| s.as_str().map(|s| s.to_string()).unwrap_or_else(|_| "JS error".to_string())).unwrap_or_else(|_| "JS error".to_string()),
+                                    Err(_) => "JS function exception".to_string(),
+                                },
+                                Err(_) => "JS function exception".to_string(),
+                            }
+                        } else {
+                            "JS function call failed".to_string()
+                        };
+                        Err(NapiError::from_reason(err_msg))
                     }
                 };
                 match call_res {
