@@ -39,12 +39,12 @@ test("eval tables and arrays", () => {
 test("globals set and get", () => {
   const lua = Lua.full();
 
-  lua.setGlobal("myNum", 42);
-  expect(lua.getGlobal("myNum")).toBe(42);
+  lua.globals().set("myNum", 42);
+  expect(lua.globals().get("myNum")).toBe(42);
   expect(lua.eval("return myNum * 2")).toBe(84);
 
-  lua.setGlobal("myStr", "embedded lua");
-  expect(lua.getGlobal("myStr")).toBe("embedded lua");
+  lua.globals().set("myStr", "embedded lua");
+  expect(lua.globals().get("myStr")).toBe("embedded lua");
   expect(lua.eval("return myStr .. ' rocks'")).toBe("embedded lua rocks");
 });
 

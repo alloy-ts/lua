@@ -92,29 +92,31 @@ describe("Lua.eval - value conversion", () => {
   });
 });
 
-describe("global variables", () => {
-  test("setGlobal / getGlobal round-trip scalars", () => {
+describe("global variables via globals()", () => {
+  test("globals().set / globals().get round-trip scalars", () => {
     const lua = Lua.full();
-    lua.setGlobal("num", 10);
-    lua.setGlobal("str", "hi");
-    lua.setGlobal("flag", true);
+    const globals = lua.globals();
+    globals.set("num", 10);
+    globals.set("str", "hi");
+    globals.set("flag", true);
 
-    expect(lua.getGlobal("num")).toBe(10);
-    expect(lua.getGlobal("str")).toBe("hi");
-    expect(lua.getGlobal("flag")).toBe(true);
+    expect(globals.get("num")).toBe(10);
+    expect(globals.get("str")).toBe("hi");
+    expect(globals.get("flag")).toBe(true);
   });
 
   test("globals set from JS are visible to later eval calls", () => {
     const lua = Lua.full();
-    lua.setGlobal("multiplier", 3);
+    lua.globals().set("multiplier", 3);
     expect(lua.eval("return multiplier * 4")).toBe(12);
   });
 
   test("nested tables round-trip through globals (1-indexed arrays)", () => {
     const lua = Lua.full();
-    lua.setGlobal("cfg", { db: { host: "localhost" }, ports: [1, 2, 3] });
+    const globals = lua.globals();
+    globals.set("cfg", { db: { host: "localhost" }, ports: [1, 2, 3] });
 
-    expect(lua.getGlobal("cfg")).toEqual({
+    expect(globals.get("cfg")).toEqual({
       db: { host: "localhost" },
       ports: [1, 2, 3],
     });
@@ -122,15 +124,66 @@ describe("global variables", () => {
     expect(lua.eval("return cfg.ports[2]")).toBe(2);
   });
 
-  test("a global defined in Lua is readable via getGlobal", () => {
+  test("a global defined in Lua is readable via globals().get", () => {
     const lua = Lua.full();
     lua.eval("shared = 'from lua'");
-    expect(lua.getGlobal("shared")).toBe("from lua");
+    expect(lua.globals().get("shared")).toBe("from lua");
   });
 
   test("an unset global returns undefined", () => {
     const lua = Lua.full();
-    expect(lua.getGlobal("does_not_exist")).toBeUndefined();
+    expect(lua.globals().get("does_not_exist")).toBeUndefined();
+  });
+});
+
+describe("Callback NAPI bindings via globals().set()", () => {
+  test("registers a JS function and calls it from Lua with arguments and return values", () => {
+    const lua = Lua.full();
+    lua.globals().set("add", (a: number, b: number) => a + b);
+    expect(lua.eval("return add(15, 27)")).toBe(42);
+  });
+
+  test("handles string manipulation in JS callback", () => {
+    const lua = Lua.full();
+    lua.globals().set("greet", (name: string) => `Hello, ${name}!`);
+    expect(lua.eval("return greet('World')")).toBe("Hello, World!");
+  });
+
+  test("handles object/array parameters in JS callback", () => {
+    const lua = Lua.full();
+    let received: any = null;
+    lua.globals().set("processData", (data: any) => {
+      received = data;
+      return data.value * 2;
+    });
+
+    const result = lua.eval("return processData({ value = 21 })");
+    expect(received).toEqual({ value: 21 });
+    expect(result).toBe(42);
+  });
+
+  test("propagates JS errors to Lua pcall gracefully", () => {
+    const lua = Lua.full();
+    lua.globals().set("throwError", () => {
+      throw new Error("something went wrong in JS");
+    });
+
+    const result = lua.eval(`
+      local ok, err = pcall(throwError)
+      return { ok = ok, err = err }
+    `) as { ok: boolean; err: string };
+
+    expect(result.ok).toBe(false);
+    expect(result.err).toContain("something went wrong in JS");
+  });
+
+  test("propagates uncaught JS errors through eval as Lua runtime error", () => {
+    const lua = Lua.full();
+    lua.globals().set("failFunc", () => {
+      throw new Error("fatal callback failure");
+    });
+
+    expect(() => lua.eval("failFunc()")).toThrow(/fatal callback failure/);
   });
 });
 
