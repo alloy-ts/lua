@@ -48,7 +48,7 @@ Top-level class representing a Lua 5.4 execution environment.
 
 #### `lua.eval(code: string): string`
 
-Compiles and evaluates a Lua code snippet, returning the string representation of the result value. Returns an `Error` object if compilation or execution fails.
+Compiles and evaluates a Lua code snippet, returning the string representation of the result value. Throws a JavaScript `Error` if compilation or execution fails.
 
 #### `lua.executor(code: string): LuaExecutor`
 
