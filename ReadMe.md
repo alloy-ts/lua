@@ -18,8 +18,8 @@ environments without external native C dependencies.
 - **Full Lua Environment**: Create sandboxed Lua states with empty, core, or
   full standard libraries.
 - **Pure Rust Stackless VM**: Powered by Ottavino/Piccolo trampoline execution loop with `gc-arena` memory safety and zero external C dependencies.
-- **Eval Lua Code**: Run arbitrary Lua scripts and return JavaScript primitives,
-  objects, and arrays.
+- **Eval & Step Execution**: Run arbitrary Lua scripts synchronously or step execution via `createExecutor` / `stepExecutor` with fuel budgets.
+- **Host Callback Binding**: Register TS/JS functions as callable host functions in Lua using `registerCallback`.
 - **Global Variable Binding**: Get and set global variables in the Lua VM
   directly from JS/TS.
 - **Symmetric Coroutines**: Supports direct tail-yielding via `coroutine.yieldto(co, ...)` without stack leaks.
@@ -38,8 +38,9 @@ const lua = Lua.full();
 const result = lua.eval("return 1 + 2 * 3");
 console.log(result); // 7
 
-const greeting = lua.eval("return 'Hello, ' .. 'Lua!'");
-console.log(greeting); // "Hello, Lua!"
+// Register a JS function as a callable callback in Lua
+lua.registerCallback("multiplyJS", (a: number, b: number) => a * b);
+console.log(lua.eval("return multiplyJS(6, 7)")); // 42
 
 // Set global variables from JS/TS
 lua.setGlobal("multiplier", 10);
@@ -54,6 +55,11 @@ console.log(calculated); // "Lua x10"
 const arrayResult = lua.eval("return { 10, 20, 30 }");
 console.log(arrayResult); // [10, 20, 30]
 
+// Step-by-step executor with fuel budget
+const executor = lua.createExecutor("return 100 + 200");
+const stepRes = lua.stepExecutor(executor, 100);
+console.log(stepRes); // { done: true, value: 300 }
+
 // Check memory usage and trigger garbage collection
 console.log(`Memory used: ${lua.totalMemory()} bytes`);
 lua.gcCollect();
@@ -66,7 +72,7 @@ The `examples/` directory contains runnable TypeScript scripts demonstrating var
 - [`examples/primitives.ts`](examples/primitives.ts) — TS primitives, variables, and read-only constants in Lua.
 - [`examples/object.ts`](examples/object.ts) — TS objects and arrays mapped to Lua tables.
 - [`examples/variables.ts`](examples/variables.ts) — Merged global variable and object handling guide.
-- [`examples/function.ts`](examples/function.ts) — Defining, calling, and inspecting Lua functions.
+- [`examples/function.ts`](examples/function.ts) — Defining, calling, registering JS callbacks, and inspecting functions.
 - [`examples/coroutine.ts`](examples/coroutine.ts) — Cooperative concurrency using Lua coroutines.
 - [`examples/memory.ts`](examples/memory.ts) — Memory usage tracking and manual GC controls.
 - [`examples/stdlib.ts`](examples/stdlib.ts) — Standard library sandboxing (`empty`, `core`, `full`, `loadCore`, `loadIo`).
@@ -74,7 +80,7 @@ The `examples/` directory contains runnable TypeScript scripts demonstrating var
 Run any example script directly using `@oxc-node/core`:
 
 ```bash
-node --import @oxc-node/core/register examples/variables.ts
+node --import @oxc-node/core/register examples/function.ts
 ```
 
 ## API Reference
@@ -91,6 +97,9 @@ node --import @oxc-node/core/register examples/variables.ts
 
 - `lua.eval(code: string): unknown`: Compiles and executes the given Lua code
   string, returning the result as a JavaScript value.
+- `lua.createExecutor(code: string): LuaExecutor`: Creates a step-by-step executor for Lua code.
+- `lua.stepExecutor(executor: LuaExecutor, fuelAmount: number): { done: boolean; value?: unknown }`: Steps an executor forward by fuel amount.
+- `lua.registerCallback(name: string, callback: Function): void`: Binds a JS function as a global callable callback in Lua.
 - `lua.setGlobal(name: string, value: unknown): void`: Sets a global variable in
   the Lua VM environment.
 - `lua.getGlobal(name: string): unknown`: Retrieves a global variable from the
@@ -141,21 +150,6 @@ npm install
 ```bash
 npm test
 ```
-
-The suite is split across two files:
-
-- `src/main.test.ts` — smoke tests for the module entry point and a few core
-  `eval`/`globals`/`memory` scenarios.
-- `src/lua.test.ts` — the full `Lua` API coverage: constructors (`new Lua()`,
-  `Lua.full()`, `Lua.core()`, `Lua.empty()`), primitive/table `eval` results,
-  JS↔Lua value conversion, global variable binding, incremental stdlib loading
-  (`loadCore`/`loadIo`), memory/GC controls, and error handling (compile vs.
-  runtime errors).
-
-Both files import the `Lua` class through `src/main.ts`, which in turn
-re-exports it from the native binding loader. The native addon must be built
-first (`npm run build`) so that the generated loader and type declarations
-actually export `Lua`.
 
 - Build the library and native add-on:
 

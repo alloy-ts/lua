@@ -8,32 +8,16 @@ import { Lua } from "@alloy-ts/lua";
 
 ---
 
-## Ottavino Crate API vs. NAPI Binding Coverage
+## API Coverage Summary
 
-Ottavino is structured around internal Rust types:
-* **`Lua`**: Top-level VM instance managing the garbage collection arena (`gc-arena`).
-* **`Context<'gc>`**: Execution context providing access to global variables, string interner, registry, and GC arena mutations.
-* **`Value<'gc>`**: Enums representing all Lua values (`Nil`, `Boolean`, `Integer`, `Number`, `String`, `Table`, `Function`, `Thread`, `UserData`).
-* **`Executor<'gc>`**: Stackless execution state polled with `Fuel` budgets.
-* **`Function<'gc>`**: Enums for closures (`Closure`) and callbacks (`Callback`).
-* **`Table<'gc>`**: Associative arrays and metatables.
-* **`Thread<'gc>`**: Cooperative coroutine threads.
+Every public method exposed by the native Ottavino binding is fully mapped into TypeScript:
 
-The JavaScript/TypeScript wrapper `@alloy-ts/lua` exposes all high-level safe API operations of Ottavino via NAPI bindings:
-
-| Ottavino Crate API | NAPI Class / Method | Description |
-| --- | --- | --- |
-| `Lua::full()` / `Lua::default()` | `new Lua()` / `Lua.full()` | Instantiates VM with full stdlib (base, coroutine, math, string, table, I/O). |
-| `Lua::core()` | `Lua.core()` | Instantiates VM with core stdlib (no I/O). |
-| `Lua::empty()` | `Lua.empty()` | Instantiates empty bare VM without stdlib. |
-| `Closure::load` + `Executor::start` + `execute` | `lua.eval(code)` | Compiles, executes Lua code, and converts values to JS primitives/objects. |
-| `ctx.globals().get_raw()` + `ottavino_value_to_js` | `lua.getGlobal(name)` | Retrieves global variable by name from Lua VM. |
-| `js_to_ottavino_value` + `ctx.globals().set()` | `lua.setGlobal(name, value)` | Sets global variable in Lua VM from JS primitive/object/array. |
-| `Lua::load_core()` | `lua.loadCore()` | Dynamically loads core standard libraries into VM. |
-| `Lua::load_io()` | `lua.loadIo()` | Dynamically loads I/O standard library into VM. |
-| `Lua::total_memory()` | `lua.totalMemory()` | Queries total allocated memory tracked by `gc-arena` in bytes. |
-| `Lua::gc_collect()` | `lua.gcCollect()` | Triggers a full garbage collection cycle. |
-| `Lua::gc_metrics()` | `lua.gcMetrics()` | Returns snapshot of GC allocation debt and total allocation metrics. |
+* **Constructors & Factories**: `new Lua()`, `Lua.full()`, `Lua.core()`, `Lua.empty()`
+* **Code Execution & Stepping**: `lua.eval(code)`, `lua.createExecutor(code)`, `lua.stepExecutor(executor, fuel)`
+* **Global Variable Management**: `lua.setGlobal(name, value)`, `lua.getGlobal(name)`
+* **Host Callback Registration**: `lua.registerCallback(name, jsFunction)`
+* **Standard Library Management**: `lua.loadCore()`, `lua.loadIo()`
+* **Memory & Garbage Collection**: `lua.totalMemory()`, `lua.gcCollect()`, `lua.gcMetrics()`
 
 ---
 
@@ -68,28 +52,38 @@ const luaEmpty = Lua.empty();
 
 ---
 
-### Code Execution
+### Code Execution & Step Executors
 
 #### `lua.eval(code: string): unknown`
 Compiles and executes a string of Lua code. Returns the result as a JavaScript value converted from the returned Lua value.
-
-* **`code`**: Lua script or expression string.
-* **Returns**: Converted JavaScript value (primitive, array, object, or `undefined`).
-* **Throws**: Error if there is a Lua compile/syntax error or a runtime error during execution.
 
 ```typescript
 const sum = lua.eval("return 10 + 20"); // 30
 ```
 
+#### `lua.createExecutor(code: string): LuaExecutor`
+Compiles Lua code and returns a handle to a step-by-step executor for paused/paced execution.
+
+```typescript
+const executor = lua.createExecutor("return 100 + 200");
+```
+
+#### `lua.stepExecutor(executor: LuaExecutor, fuelAmount: number): { done: boolean; value?: unknown }`
+Steps the given executor forward by up to `fuelAmount` VM instruction steps.
+
+```typescript
+const res = lua.stepExecutor(executor, 50);
+if (res.done) {
+  console.log("Result:", res.value); // 300
+}
+```
+
 ---
 
-### Global Variable Management
+### Global Variable & Host Callback Management
 
 #### `lua.setGlobal(name: string, value: unknown): void`
 Binds a JavaScript value as a global variable in the Lua environment.
-
-* **`name`**: The global variable name in Lua.
-* **`value`**: The value to set (JS primitives, arrays, or plain objects).
 
 ```typescript
 lua.setGlobal("appName", "AlloyApp");
@@ -99,11 +93,16 @@ lua.setGlobal("config", { port: 8080, active: true });
 #### `lua.getGlobal(name: string): unknown`
 Retrieves a global variable from the Lua environment by name.
 
-* **`name`**: The global variable name in Lua.
-* **Returns**: The converted JavaScript representation of the Lua global variable.
-
 ```typescript
 const appName = lua.getGlobal("appName"); // "AlloyApp"
+```
+
+#### `lua.registerCallback(name: string, callback: (...args: any[]) => any): void`
+Registers a JavaScript host function into the Lua global scope as a callable Ottavino `Callback`.
+
+```typescript
+lua.registerCallback("addJS", (a: number, b: number) => a + b);
+const res = lua.eval("return addJS(5, 10)"); // 15
 ```
 
 ---
@@ -113,17 +112,8 @@ const appName = lua.getGlobal("appName"); // "AlloyApp"
 #### `lua.loadCore(): void`
 Loads core standard libraries (base, coroutine, math, string, table) into an existing `Lua` instance.
 
-```typescript
-const lua = Lua.empty();
-lua.loadCore(); // Now string/math/table functions are available
-```
-
 #### `lua.loadIo(): void`
 Loads the I/O standard library into an existing `Lua` instance.
-
-```typescript
-lua.loadIo();
-```
 
 ---
 
@@ -132,26 +122,11 @@ lua.loadIo();
 #### `lua.totalMemory(): number`
 Returns the total memory currently allocated and tracked by the Lua VM in bytes.
 
-```typescript
-const bytesUsed = lua.totalMemory();
-```
-
 #### `lua.gcCollect(): void`
 Triggers a full garbage collection cycle in the Lua VM.
 
-```typescript
-lua.gcCollect();
-```
-
 #### `lua.gcMetrics(): GcMetrics`
-Returns a snapshot of GC metrics from the allocator.
-
-* **Returns**: `GcMetrics` object containing `{ totalAllocation: number, allocationDebt: number }`.
-
-```typescript
-const metrics = lua.gcMetrics();
-console.log(metrics.totalAllocation, metrics.allocationDebt);
-```
+Returns a snapshot of GC metrics (`{ totalAllocation: number, allocationDebt: number }`).
 
 ---
 

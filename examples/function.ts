@@ -1,16 +1,15 @@
 import { Lua } from "../src/main.ts";
 
 function main() {
-  console.log("=== Demo: Defining & Invoking Lua Functions from TS ===");
+  console.log("=== Demo: Defining, Registering & Invoking Functions from TS ===");
 
   const lua = Lua.full();
 
   // ---------------------------------------------------------------------------
-  // 1. Defining Global Lua Functions
+  // 1. Defining Global Functions in Lua
   // ---------------------------------------------------------------------------
-  console.log("\n--- 1. Defining Global Functions in Lua ---");
+  console.log("\n--- 1. Defining Functions inside Lua ---");
 
-  // Define a Lua function using `lua.eval()`
   lua.eval(`
     function add(a, b)
       return a + b
@@ -21,7 +20,6 @@ function main() {
     end
   `);
 
-  // Invoke the Lua functions via `lua.eval()`
   const sum = lua.eval("return add(15, 27)");
   const greeting = lua.eval("return greet('TypeScript')");
 
@@ -29,54 +27,29 @@ function main() {
   console.log("Result of greet('TypeScript'):  ", greeting);
 
   // ---------------------------------------------------------------------------
-  // 2. Passing Arguments from Global Variables
+  // 2. Registering JS Functions as Host Callbacks in Lua
   // ---------------------------------------------------------------------------
-  console.log("\n--- 2. Invoking Functions with Global Variables ---");
+  console.log("\n--- 2. Registering TS/JS Callbacks into Lua ---");
 
-  // Set TS variables as globals in Lua environment
-  lua.setGlobal("numA", 100);
-  lua.setGlobal("numB", 250);
+  // Bind a TypeScript function into Lua global scope
+  lua.registerCallback("hostMultiply", (a: number, b: number) => {
+    console.log(`[JS Callback] Called hostMultiply with args (${a}, ${b})`);
+    return a * b;
+  });
 
-  const total = lua.eval("return add(numA, numB)");
-  console.log("Result of add(numA, numB) from JS globals:", total);
+  const product = lua.eval("return hostMultiply(6, 7)");
+  console.log("Result of calling hostMultiply(6, 7) from Lua:", product);
 
   // ---------------------------------------------------------------------------
-  // 3. Inspecting Lua Function References in TS via NAPI
+  // 3. Inspecting Function References in TS via NAPI
   // ---------------------------------------------------------------------------
   console.log("\n--- 3. Function References in JS/TS ---");
 
-  // When retrieving a Lua function value via `getGlobal` or `eval`,
-  // NAPI surfaces it as the placeholder string `"[lua function]"`.
   const addFnRef = lua.getGlobal("add");
-  const printFnRef = lua.getGlobal("print");
+  const hostFnRef = lua.getGlobal("hostMultiply");
 
-  console.log("getGlobal('add') returned:  ", addFnRef);
-  console.log("getGlobal('print') returned:", printFnRef);
-
-  // ---------------------------------------------------------------------------
-  // 4. Higher-Order Functions & Anonymous Functions
-  // ---------------------------------------------------------------------------
-  console.log("\n--- 4. Anonymous & Higher-Order Functions ---");
-
-  lua.eval(`
-    function applyOperation(arr, fn)
-      local result = {}
-      for i, val in ipairs(arr) do
-        table.insert(result, fn(val))
-      end
-      return result
-    end
-  `);
-
-  lua.setGlobal("numbers", [1, 2, 3, 4, 5]);
-
-  const doubled = lua.eval(`
-    return applyOperation(numbers, function(x)
-      return x * 2
-    end)
-  `);
-
-  console.log("Doubled array using higher-order Lua function:", doubled);
+  console.log("getGlobal('add') returned:         ", addFnRef);
+  console.log("getGlobal('hostMultiply') returned:", hostFnRef);
 
   console.log("\n=== Demo Complete ===");
 }

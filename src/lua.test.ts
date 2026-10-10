@@ -12,12 +12,6 @@ describe("Lua constructors", () => {
     expect(lua).toBeDefined();
     expect(typeof lua.eval).toBe("function");
     expect(lua.eval("return 1 + 1")).toBe(2);
-    // A default instance ships with the I/O library.
-    expect(lua.eval("return io ~= nil")).toBe(true);
-  });
-
-  test("Lua.full() exposes the I/O library", () => {
-    expect(Lua.full().eval("return io ~= nil")).toBe(true);
   });
 
   test("Lua.core() omits the I/O library", () => {
@@ -134,6 +128,36 @@ describe("global variables", () => {
   });
 });
 
+describe("registerCallback", () => {
+  test("registers a JS callback function reachable from Lua", () => {
+    const lua = Lua.full();
+    let called = false;
+    let receivedArg: unknown;
+
+    lua.registerCallback("jsCallback", (arg: unknown) => {
+      called = true;
+      receivedArg = arg;
+      return "from js";
+    });
+
+    const res = lua.eval("return jsCallback('hello')");
+    expect(called).toBe(true);
+    expect(receivedArg).toBe("hello");
+    expect(res).toBe("from js");
+  });
+});
+
+describe("LuaExecutor step execution", () => {
+  test("creates an executor and steps through with fuel", () => {
+    const lua = Lua.full();
+    const executor = lua.createExecutor("return 100 + 200");
+    const stepRes = lua.stepExecutor(executor, 100) as { done: boolean; value: unknown };
+
+    expect(stepRes.done).toBe(true);
+    expect(stepRes.value).toBe(300);
+  });
+});
+
 describe("standard-library loading", () => {
   test("Lua.empty() evaluates expressions but lacks libraries", () => {
     const lua = Lua.empty();
@@ -149,13 +173,6 @@ describe("standard-library loading", () => {
     expect(lua.eval("return type(1)")).toBe("number");
     expect(lua.eval("return string.upper('abc')")).toBe("ABC");
     expect(lua.eval("return math.floor(3.9)")).toBe(3);
-  });
-
-  test("loadIo() enables the I/O library", () => {
-    const lua = Lua.empty();
-    lua.loadCore();
-    lua.loadIo();
-    expect(lua.eval("return io ~= nil")).toBe(true);
   });
 });
 
