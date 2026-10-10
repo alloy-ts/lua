@@ -716,6 +716,6 @@ if (!nativeBinding) {
   throw new Error(`Failed to load native binding`)
 }
 
-const { add } = nativeBinding
-export { add }
+const { Lua } = nativeBinding
+export { Lua }
 export const __napiBindingTarget = __napiLoadedBindingTarget

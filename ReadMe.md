@@ -1,53 +1,63 @@
-# Starter Template
+# Embed Lua in TypeScript/JavaScript via NAPI
 
-TypeScript starter template.
+This module provides TypeScript/JavaScript bindings for embedding and executing Lua code directly in Node.js applications, powered by NAPI (`napi-rs`) and `ottavino`.
 
-## Development
+## Features
 
-- Configure local hooks:
+- **Full Lua Environment**: Run Lua scripts with standard library capabilities.
+- **High Performance**: Native Rust binding using NAPI-RS for minimal overhead.
+- **Seamless JS Interop**: Evaluate Lua expressions and receive converted JavaScript primitive types (`number`, `string`, `boolean`, `undefined`/`nil`).
 
-```bash
-npm run prepare
-```
+## Installation / Setup
 
-- Install dependencies:
-
-```bash
-vp install
-```
-
-- Run the unit tests:
+Ensure local dependencies are installed and the native binary is built:
 
 ```bash
-vp test
-```
-
-- Run the locally:
-
-```bash
-npm run dev
-```
-
-- Build the library:
-
-```bash
+npm install
 npm run build
 ```
 
-- Code formatting:
+## Usage Example
 
-```bash
-npm run fmt
+### Simple Evaluation with `evalLua`
+
+```typescript
+import { evalLua } from "./src/main.ts";
+
+const sum = evalLua("return 10 + 20");
+console.log(sum); // Output: 30
+
+const message = evalLua('return "Hello from " .. "Lua!"');
+console.log(message); // Output: Hello from Lua!
 ```
 
-- Linting:
+### Using the `Lua` Class
 
-```bash
-npm run lint
+```typescript
+import { Lua } from "./src/main.ts";
+
+const lua = Lua.full();
+
+// Evaluate expressions
+const result = lua.eval("return math.sqrt(16) * 2");
+console.log(result); // Output: 8
+
+// Evaluate scripts
+lua.eval('x = 42');
+const x = lua.eval('return x');
+console.log(x); // Output: 42
 ```
 
-- Code check:
+## Development & Testing
+
+- Run tests:
 
 ```bash
-npm run check
+npm test
+```
+
+- Build native binaries:
+
+```bash
+npm run build:napi
 ```
