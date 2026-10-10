@@ -70,8 +70,9 @@ console.log(`Memory used: ${lua.totalMemory()} bytes`);
 lua.gcCollect();
 ```
 
-## API & Language Guides
+## Architecture, API & Language Guides
 
+- For the VM architecture, stackless interpreter design, `gc-arena`, fuel pacing, and NAPI coverage, see [docs/architecture.md](./docs/architecture.md).
 - For detailed type declarations and complete API documentation, see [docs/api.md](./docs/api.md).
 - For a comprehensive Lua 5.4 language guide, standard library overview, and Ottavino VM extensions, see [docs/lang-guide.md](./docs/lang-guide.md).
 
