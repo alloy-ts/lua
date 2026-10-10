@@ -12,6 +12,30 @@ To handle garbage collection safely in Rust, Piccolo introduced **`gc-arena`**, 
 
 ---
 
+## Core Types in Ottavino / Piccolo
+
+Ottavino provides a clean, garbage-collected set of core types:
+
+- **`Value<'gc>`**: Enum representing all Lua values (`Nil`, `Boolean(bool)`, `Integer(i64)`, `Number(f64)`, `String(String<'gc>)`, `Table(Table<'gc>)`, `Function(Function<'gc>)`, `Thread(Thread<'gc>)`, `UserData(UserData<'gc>)`).
+- **`Table<'gc>`**: Garbage-collected Lua table for sequential arrays and key-value maps.
+- **`Function<'gc>`**: Enum representing executable functions:
+  - `Closure<'gc>`: Compiled Lua bytecodes bound to an upvalue environment (`_ENV`).
+  - `Callback<'gc>`: Host functions implemented in Rust via `CallbackFn` or `Callback::from_fn`.
+- **`Thread<'gc>`**: A Lua coroutine execution context.
+- **`Stack<'gc, '_>`**: Register and argument stack for function execution and callbacks.
+- **`Executor`**: The stackless driver that polls and steps Lua execution with fuel.
+
+### Current NAPI Exposure
+
+The NAPI bindings in `src/lua.rs` expose high-level wrappers for Node.js / TypeScript:
+
+- **`Lua`**: High-level wrapper managing the inner `ottavino::Lua` context.
+- **`eval(code)`**: Loads code into a `Closure`, executes via `Executor::start` / `finish`, and converts `Value` to JS primitives, objects, or arrays.
+- **`setGlobal(name, val)` / `getGlobal(name)`**: Converts JS values to/from `Value` and manages `ctx.globals()`.
+- **`totalMemory()` / `gcCollect()` / `gcMetrics()`**: Exposes `gc-arena` memory usage and GC cycles.
+
+---
+
 ## The "Mutation XOR Collection" Constraint & Stackless VM
 
 `gc-arena` relies on a fundamental safety invariant known as **Mutation XOR Collection**:
