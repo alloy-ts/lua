@@ -7,7 +7,8 @@ This package provides native bindings to embed a Lua 5.4 engine in TypeScript / 
 1. **NAPI-RS Bridge**: `napi-rs` generates high-performance Node.js native add-ons from Rust. It marshals data directly between V8 / JS values (`Unknown`, `Object`, primitives) and Rust data structures without manual C glue code.
 2. **Pure-Rust Lua Engine**: We embed `ottavino`, a pure-Rust implementation of Lua 5.4. It manages Lua execution inside a garbage-collected arena.
 3. **Value Conversion**: JS primitives (`boolean`, `number`, `string`, `null`/`undefined`) and nested objects/arrays automatically convert to corresponding Lua types (`boolean`, `number`, `string`, `nil`, and `table`) and vice-versa.
-4. **Stackless Interpreter & Fuel Pacing**: Long-running Lua execution can be stepped using fuel limits (`Executor.step(fuel)`), enabling pre-emptive concurrency, cancellation, and execution pacing.
+4. **Callable Host Functions**: JavaScript functions can be bound to the Lua environment using `registerCallback(name, jsFn)`, enabling Lua code to invoke host TypeScript/JavaScript functions directly.
+5. **Stackless Interpreter & Fuel Pacing**: Long-running Lua execution can be stepped using fuel limits (`Executor.step(fuel)`), enabling pre-emptive concurrency, cancellation, and execution pacing.
 
 ## Usage
 
@@ -23,7 +24,7 @@ const sum = lua.eval("return 10 + 20"); // 30
 const greeting = lua.eval("return 'Hello ' .. 'World!'"); // "Hello World!"
 ```
 
-### Global Variables
+### Global Variables & Values
 
 ```ts
 const lua = new Lua();
@@ -38,15 +39,33 @@ const result = lua.eval("return 14 * multiplier"); // 42
 const val = lua.getGlobal("multiplier"); // 3
 ```
 
-### Registering Host JS Callbacks
+### Registering Host JS Functions (Callable from Lua)
+
+Use `registerCallback(name, fn)` to bind a JavaScript/TypeScript function as a global callable function inside Lua:
 
 ```ts
 const lua = new Lua();
 
-// Register a JS function reachable from Lua scripts
+// Register host JS functions
 lua.registerCallback("hostAdd", (a: number, b: number) => a + b);
+lua.registerCallback("hostGreet", (name: string) => `Hello, ${name}!`);
 
-const result = lua.eval("return hostAdd(15, 25)"); // 40
+// Call registered host functions directly inside Lua scripts
+const total = lua.eval("return hostAdd(15, 25)"); // 40
+const message = lua.eval("return hostGreet('World')"); // "Hello, World!"
+```
+
+### Passing Objects & Tables
+
+```ts
+const lua = new Lua();
+
+// JS Objects convert to Lua Tables
+lua.setGlobal("user", { name: "Alice", age: 30 });
+const name = lua.eval("return user.name"); // "Alice"
+
+// Lua Tables convert back to JS Objects
+const table = lua.eval("return { x = 10, y = 20 }"); // { x: 10, y: 20 }
 ```
 
 ### Stepped Execution & Fuel Control
@@ -97,6 +116,11 @@ node --import @oxc-node/core/register examples/async.ts
 node --import @oxc-node/core/register examples/memory.ts
 node --import @oxc-node/core/register examples/stdlib.ts
 ```
+
+## Documentation
+
+- [API Reference](docs/api.md)
+- [Lua 5.4 & Ottavino Language Guide](docs/lang-guide.md)
 
 ## Development
 
