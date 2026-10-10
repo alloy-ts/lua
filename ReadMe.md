@@ -33,12 +33,12 @@ console.log(result); // 7
 const greeting = lua.eval("return 'Hello, ' .. 'Lua!'");
 console.log(greeting); // "Hello, Lua!"
 
-// Set global variables from JS/TS
-lua.setGlobal("multiplier", 10);
-lua.setGlobal("data", { name: "Lua", active: true });
+// Set global variables from JS/TS (via lua.globals() or lua.setGlobal)
+lua.globals().set("multiplier", 10);
+lua.globals().set("data", { name: "Lua", active: true });
 
 // Read global variables and use them in Lua code
-console.log(lua.getGlobal("multiplier")); // 10
+console.log(lua.globals().get("multiplier")); // 10
 const calculated = lua.eval("return data.name .. ' x' .. multiplier");
 console.log(calculated); // "Lua x10"
 
@@ -65,10 +65,9 @@ lua.gcCollect();
 
 - `lua.eval(code: string): unknown`: Compiles and executes the given Lua code
   string, returning the result as a JavaScript value.
-- `lua.setGlobal(name: string, value: unknown): void`: Sets a global variable in
-  the Lua VM environment.
-- `lua.getGlobal(name: string): unknown`: Retrieves a global variable from the
-  Lua VM environment.
+- `lua.globals(): Globals`: Returns the global variable manager (`Globals` handle with `.get(name)` and `.set(name, value)` methods, aligning with Ottavino's `ctx.globals()`).
+- `lua.setGlobal(name: string, value: unknown): void`: Alias for `lua.globals().set(name, value)`.
+- `lua.getGlobal(name: string): unknown`: Alias for `lua.globals().get(name)`.
 - `lua.loadCore(): void`: Loads core standard libraries into an existing Lua
   state.
 - `lua.loadIo(): void`: Loads I/O standard libraries into an existing Lua state.

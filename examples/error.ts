@@ -17,7 +17,7 @@ try {
 }
 
 console.log("\n=== 3. JS Function Exception caught inside Lua using pcall ===");
-lua.setGlobal("buggyJsFunction", () => {
+lua.globals().set("buggyJsFunction", () => {
   throw new Error("JS function failed intentionally!");
 });
 

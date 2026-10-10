@@ -93,7 +93,19 @@ describe("Lua.eval - value conversion", () => {
 });
 
 describe("global variables", () => {
-  test("setGlobal / getGlobal round-trip scalars", () => {
+  test("lua.globals().set() and lua.globals().get() round-trip scalars", () => {
+    const lua = Lua.full();
+    const globals = lua.globals();
+    globals.set("num", 10);
+    globals.set("str", "hi");
+    globals.set("flag", true);
+
+    expect(globals.get("num")).toBe(10);
+    expect(globals.get("str")).toBe("hi");
+    expect(globals.get("flag")).toBe(true);
+  });
+
+  test("setGlobal / getGlobal round-trip scalars as alias to globals()", () => {
     const lua = Lua.full();
     lua.setGlobal("num", 10);
     lua.setGlobal("str", "hi");
@@ -106,15 +118,15 @@ describe("global variables", () => {
 
   test("globals set from JS are visible to later eval calls", () => {
     const lua = Lua.full();
-    lua.setGlobal("multiplier", 3);
+    lua.globals().set("multiplier", 3);
     expect(lua.eval("return multiplier * 4")).toBe(12);
   });
 
   test("nested tables round-trip through globals (1-indexed arrays)", () => {
     const lua = Lua.full();
-    lua.setGlobal("cfg", { db: { host: "localhost" }, ports: [1, 2, 3] });
+    lua.globals().set("cfg", { db: { host: "localhost" }, ports: [1, 2, 3] });
 
-    expect(lua.getGlobal("cfg")).toEqual({
+    expect(lua.globals().get("cfg")).toEqual({
       db: { host: "localhost" },
       ports: [1, 2, 3],
     });
@@ -122,15 +134,15 @@ describe("global variables", () => {
     expect(lua.eval("return cfg.ports[2]")).toBe(2);
   });
 
-  test("a global defined in Lua is readable via getGlobal", () => {
+  test("a global defined in Lua is readable via globals().get()", () => {
     const lua = Lua.full();
     lua.eval("shared = 'from lua'");
-    expect(lua.getGlobal("shared")).toBe("from lua");
+    expect(lua.globals().get("shared")).toBe("from lua");
   });
 
   test("an unset global returns undefined", () => {
     const lua = Lua.full();
-    expect(lua.getGlobal("does_not_exist")).toBeUndefined();
+    expect(lua.globals().get("does_not_exist")).toBeUndefined();
   });
 });
 

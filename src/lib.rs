@@ -1,3 +1,3 @@
 pub mod lua;
 
-pub use lua::{GcMetrics, Lua};
+pub use lua::{GcMetrics, Globals, Lua};

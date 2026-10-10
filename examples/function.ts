@@ -3,20 +3,23 @@ import { Lua } from "../src/main.ts";
 // Instantiate a new Lua VM with full standard libraries
 const lua = Lua.full();
 
-// 1. Declare a simple JS utility function and register it as a Lua global
-lua.setGlobal("add", (a: number, b: number) => {
+// Access the global variables table (aligning with Ottavino's .globals() API)
+const globals = lua.globals();
+
+// 1. Declare a simple JS utility function and register it in Lua globals
+globals.set("add", (a: number, b: number) => {
   return a + b;
 });
 
 // 2. Register a JS function that processes complex objects/tables
-lua.setGlobal("formatUser", (user: { name: string; role?: string }) => {
+globals.set("formatUser", (user: { name: string; role?: string }) => {
   const role = user.role ?? "User";
   return `[${role.toUpperCase()}] ${user.name}`;
 });
 
 // 3. Register a JS logging callback
 const logs: string[] = [];
-lua.setGlobal("logMessage", (msg: string) => {
+globals.set("logMessage", (msg: string) => {
   logs.push(`LOG: ${msg}`);
 });
 
