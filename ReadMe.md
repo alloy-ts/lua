@@ -13,7 +13,9 @@ To support embedded Lua in TypeScript/JavaScript via NAPI:
 3. **Type Conversion**: JS primitives (`number`, `string`, `boolean`, `null/undefined`) and structures (`object`, `array`) are mapped bidirectionally to Lua types (`integer`, `number`, `string`, `table`, `nil`).
 4. **Exported API**: The `Lua` class is exported via NAPI to TypeScript/JavaScript, providing methods to evaluate code, manage global variables, load standard libraries, and control garbage collection.
 
-## Defining Lua Primitives & Constants from TS/JS
+## Examples & Usage
+
+### 1. Defining Lua Primitives & Constants from TS/JS
 
 You can define Lua global variables and constants from TypeScript using `lua.setGlobal(name, value)`:
 
@@ -22,16 +24,12 @@ import { Lua } from "@lib/module";
 
 const lua = Lua.full();
 
-// 1. Set primitives (number, string, boolean, null)
+// Set primitives (number, string, boolean, null)
 lua.setGlobal("MAX_CONNECTIONS", 100);
 lua.setGlobal("APP_NAME", "Lua Engine");
 lua.setGlobal("DEBUG_MODE", true);
 
-// 2. Set structured types (JS objects & arrays -> Lua tables)
-lua.setGlobal("SERVER_CONFIG", { host: "127.0.0.1", port: 8080 });
-lua.setGlobal("ALLOWED_ROLES", ["admin", "editor"]);
-
-// 3. Define read-only constants in Lua via metatables
+// Define read-only constants in Lua via metatables
 lua.eval(`
   CONSTANTS = setmetatable({}, {
     __index = { MAX_RETRIES = 5, ENVIRONMENT = "production" },
@@ -42,7 +40,37 @@ lua.eval(`
 `);
 ```
 
-See [examples/primitives.ts](examples/primitives.ts) for a runnable example.
+See [examples/primitives.ts](examples/primitives.ts) for a runnable primitives example.
+
+### 2. Defining Lua Objects & Tables from TS/JS
+
+JavaScript objects and arrays are automatically converted to Lua tables when passed via NAPI:
+
+```typescript
+import { Lua } from "@lib/module";
+
+const lua = Lua.full();
+
+// Define a JS object and export it to Lua as a global table
+lua.setGlobal("user", {
+  id: 101,
+  username: "alice",
+  profile: { firstName: "Alice", age: 28 },
+  roles: ["admin", "developer"],
+});
+
+// Access and modify object properties inside Lua scripts
+lua.eval(`
+  user.profile.age = 29
+  table.insert(user.roles, "lead")
+`);
+
+// Fetch the modified object back into JS/TS
+const updatedUser = lua.getGlobal("user");
+console.log(updatedUser.profile.age); // 29
+```
+
+See [examples/object.ts](examples/object.ts) for a runnable object/table example.
 
 ## Features
 
