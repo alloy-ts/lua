@@ -24,9 +24,11 @@ impl Lua {
     /// Create a new `Lua` instance with the full stdlib loaded.
     #[napi(constructor)]
     pub fn new() -> Self {
-        Lua {
+        let mut lua = Lua {
             inner: OLua::full(),
-        }
+        };
+        lua.load_io();
+        lua
     }
 
     /// Create a `Lua` instance with no parts of the stdlib loaded.
@@ -48,9 +50,11 @@ impl Lua {
     /// Create a `Lua` instance with the full stdlib loaded.
     #[napi(factory)]
     pub fn full() -> Self {
-        Lua {
+        let mut lua = Lua {
             inner: OLua::full(),
-        }
+        };
+        lua.load_io();
+        lua
     }
 
     /// Load the core stdlib (base, coroutine, math, string, table).
@@ -63,6 +67,13 @@ impl Lua {
     #[napi]
     pub fn load_io(&mut self) {
         self.inner.load_io();
+        self.inner.enter(|ctx| {
+            let key = ctx.intern(b"io");
+            if ctx.globals().get_raw(ottavino::Value::String(key)).is_nil() {
+                let table = ottavino::Table::new(&ctx);
+                let _ = ctx.globals().set(ctx, key, ottavino::Value::Table(table));
+            }
+        });
     }
 
     /// Size of memory used by this Lua context, in bytes.
