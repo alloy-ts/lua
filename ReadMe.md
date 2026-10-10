@@ -8,7 +8,8 @@ This package provides native bindings to embed a Lua 5.4 engine in TypeScript / 
 2. **Pure-Rust Lua Engine**: We embed `ottavino`, a pure-Rust implementation of Lua 5.4. It manages Lua execution inside a garbage-collected arena.
 3. **Value Conversion**: JS primitives (`boolean`, `number`, `string`, `null`/`undefined`) and nested objects/arrays automatically convert to corresponding Lua types (`boolean`, `number`, `string`, `nil`, and `table`) and vice-versa.
 4. **Callable Host Functions**: JavaScript functions can be bound to the Lua environment using `registerCallback(name, jsFn)`, enabling Lua code to invoke host TypeScript/JavaScript functions directly.
-5. **Stackless Interpreter & Fuel Pacing**: Long-running Lua execution can be stepped using fuel limits (`Executor.step(fuel)`), enabling pre-emptive concurrency, cancellation, and execution pacing.
+5. **Exception Propagation**: Lua syntax/runtime errors and host JS callback exceptions propagate seamlessly across the JS/Lua boundary and can be caught via standard JS `try/catch` or Lua `pcall`.
+6. **Stackless Interpreter & Fuel Pacing**: Long-running Lua execution can be stepped using fuel limits (`Executor.step(fuel)`), enabling pre-emptive concurrency, cancellation, and execution pacing.
 
 ## Usage
 
@@ -53,6 +54,30 @@ lua.registerCallback("hostGreet", (name: string) => `Hello, ${name}!`);
 // Call registered host functions directly inside Lua scripts
 const total = lua.eval("return hostAdd(15, 25)"); // 40
 const message = lua.eval("return hostGreet('World')"); // "Hello, World!"
+```
+
+### Error Handling & Exception Propagation
+
+```ts
+const lua = new Lua();
+
+// 1. Catching Lua syntax/runtime errors in JS
+try {
+  lua.eval("error('Explicit runtime error from Lua!')");
+} catch (err: any) {
+  console.log("Caught Lua error in JS:", err.message);
+}
+
+// 2. Exception thrown inside registered JS callback
+lua.registerCallback("failingFunc", () => {
+  throw new Error("Failure in host JS function!");
+});
+
+try {
+  lua.eval("return failingFunc()");
+} catch (err: any) {
+  console.log("Caught propagated JS error:", err.message);
+}
 ```
 
 ### Passing Objects & Tables
@@ -115,6 +140,7 @@ node --import @oxc-node/core/register examples/function.ts
 node --import @oxc-node/core/register examples/async.ts
 node --import @oxc-node/core/register examples/memory.ts
 node --import @oxc-node/core/register examples/stdlib.ts
+node --import @oxc-node/core/register examples/error.ts
 ```
 
 ## Documentation
