@@ -52,9 +52,12 @@ console.log(`Memory used: ${lua.totalMemory()} bytes`);
 lua.gcCollect();
 ```
 
-## API Reference
+## Documentation
 
-See [docs/api.md](docs/api.md) for full detailed API documentation.
+- **[API Reference](docs/api.md)**: Full API reference for class constructors, methods, and conversion rules.
+- **[Lua Language & Stdlib Guide](docs/lang-guide.md)**: Overview of Lua 5.4 language basics, included standard libraries, and Ottavino extensions.
+
+## API Reference
 
 ### Exported Class: `Lua`
 
