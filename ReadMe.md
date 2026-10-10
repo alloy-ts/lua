@@ -19,6 +19,24 @@ environments without external native C dependencies.
 - **GC & Memory Controls**: Monitor memory consumption (`totalMemory()`) and
   manually trigger garbage collection (`gcCollect()`).
 
+## Examples
+
+The [`examples/`](./examples) directory contains runnable TypeScript examples demonstrating key features:
+
+- [`examples/object.ts`](./examples/object.ts) — Defining, passing, mutating, and binding methods to Lua objects from TS.
+- [`examples/globals.ts`](./examples/globals.ts) — Handling JS/TS primitives, global variables, constants, and complex config objects in Lua.
+- [`examples/function.ts`](./examples/function.ts) — Defining, calling, and inspecting Lua functions, closures, and higher-order functions from TS.
+- [`examples/coroutine.ts`](./examples/coroutine.ts) / [`examples/async.ts`](./examples/async.ts) — Cooperative multitasking, yield/resume execution, and task scheduling using Lua coroutines.
+- [`examples/metatable.ts`](./examples/metatable.ts) — Metatables, operator overloading, and prototype inheritance in Lua.
+- [`examples/memory.ts`](./examples/memory.ts) — Memory tracking and manual garbage collection controls (`totalMemory`, `gcCollect`, `gcMetrics`).
+- [`examples/stdlib.ts`](./examples/stdlib.ts) — Standard library sandboxing (`Lua.empty()`, `Lua.core()`, `Lua.full()`, `loadCore()`, `loadIo()`).
+
+Run any example directly using Node.js:
+
+```bash
+node --import @oxc-node/core/register examples/object.ts
+```
+
 ## Usage Example
 
 ```typescript
@@ -53,6 +71,8 @@ lua.gcCollect();
 ```
 
 ## API Reference
+
+For detailed type declarations and complete API documentation, see [docs/api.md](./docs/api.md).
 
 ### Constructors
 
