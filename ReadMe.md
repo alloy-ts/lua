@@ -211,22 +211,19 @@ Because `ottavino` is a pure Rust Lua VM, cross-compiling to WebAssembly does no
 
 ## API Reference
 
-### Constructors
+For complete API documentation, including constructor overloads, method signatures, memory GC metrics interfaces, and JS-to-Lua type mapping rules, see [docs/api.md](docs/api.md).
 
-- `Lua.full()` or `new Lua()`: Instantiates a Lua VM with the full standard library loaded (base, coroutine, math, string, table, I/O).
-- `Lua.core()`: Instantiates a Lua VM with core standard libraries loaded (no I/O).
-- `Lua.empty()`: Instantiates an empty Lua VM with no standard libraries.
+### Summary
 
-### Methods
-
-- `lua.eval(code: string): unknown`: Compiles and executes the given Lua code string, returning the result as a JavaScript value.
-- `lua.setGlobal(name: string, value: unknown): void`: Sets a global variable in the Lua VM environment.
-- `lua.getGlobal(name: string): unknown`: Retrieves a global variable from the Lua VM environment.
-- `lua.loadCore(): void`: Loads core standard libraries into an existing Lua state.
-- `lua.loadIo(): void`: Loads I/O standard libraries into an existing Lua state.
-- `lua.totalMemory(): number`: Returns total memory used by the Lua VM in bytes.
-- `lua.gcCollect(): void`: Triggers a full garbage collection cycle in the Lua VM.
-- `lua.gcMetrics(): GcMetrics`: Returns garbage collector metrics.
+- `new Lua()` / `Lua.full()`: Instantiates a Lua VM with full stdlib (base, coroutine, math, string, table, I/O).
+- `Lua.core()`: Instantiates a Lua VM with core stdlib (no I/O).
+- `Lua.empty()`: Instantiates an empty sandboxed Lua VM.
+- `lua.eval(code: string): unknown`: Compiles and executes Lua code string.
+- `lua.setGlobal(name: string, value: unknown): void`: Binds a JS primitive, array, or object to a Lua global variable.
+- `lua.getGlobal(name: string): unknown`: Retrieves a Lua global variable.
+- `lua.loadCore()` / `lua.loadIo()`: Loads core or I/O stdlib into an existing state.
+- `lua.totalMemory(): number`: Returns memory used in bytes.
+- `lua.gcCollect()` / `lua.gcMetrics()`: Triggers garbage collection and fetches GC metrics.
 
 ## Development
 
