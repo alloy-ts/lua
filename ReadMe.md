@@ -64,6 +64,18 @@ const luaEmpty = Lua.empty();
 luaEmpty.loadCore(); // Dynamically load core stdlib
 ```
 
+## Examples
+
+Run any of the example scripts with `@oxc-node/core`:
+
+```bash
+node --import @oxc-node/core/register examples/primitives.ts
+node --import @oxc-node/core/register examples/object.ts
+node --import @oxc-node/core/register examples/globals.ts
+node --import @oxc-node/core/register examples/function.ts
+node --import @oxc-node/core/register examples/async.ts
+```
+
 ## Development
 
 - **Install dependencies**:
