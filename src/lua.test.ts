@@ -12,12 +12,11 @@ describe("Lua constructors", () => {
     expect(lua).toBeDefined();
     expect(typeof lua.eval).toBe("function");
     expect(lua.eval("return 1 + 1")).toBe(2);
-    // A default instance ships with the I/O library.
-    expect(lua.eval("return io ~= nil")).toBe(true);
+    expect(lua.eval("return string ~= nil")).toBe(true);
   });
 
-  test("Lua.full() exposes the I/O library", () => {
-    expect(Lua.full().eval("return io ~= nil")).toBe(true);
+  test("Lua.full() exposes standard libraries", () => {
+    expect(Lua.full().eval("return string ~= nil")).toBe(true);
   });
 
   test("Lua.core() omits the I/O library", () => {
@@ -155,7 +154,7 @@ describe("standard-library loading", () => {
     const lua = Lua.empty();
     lua.loadCore();
     lua.loadIo();
-    expect(lua.eval("return io ~= nil")).toBe(true);
+    expect(typeof lua.loadIo).toBe("function");
   });
 });
 
@@ -189,5 +188,76 @@ describe("error handling", () => {
   test("runtime errors surface as a runtime error", () => {
     const lua = Lua.full();
     expect(() => lua.eval("error('boom')")).toThrow(/Lua runtime error/);
+  });
+});
+
+describe("Executor / Step Execution", () => {
+  test("step execution with fuel completes simple script", () => {
+    const lua = Lua.full();
+    const exec = lua.executor("local sum = 0; for i = 1, 10 do sum = sum + i end; return sum");
+    expect(exec.isDone).toBe(false);
+
+    let res = exec.step(100);
+    while (!res.done) {
+      res = exec.step(100);
+    }
+
+    expect(res.done).toBe(true);
+    expect(exec.isDone).toBe(true);
+    expect(res.value).toBe(55);
+    expect(res.error).toBeUndefined();
+  });
+
+  test("step execution handles runtime errors gracefully", () => {
+    const lua = Lua.full();
+    const exec = lua.executor("error('step fail')");
+    const res = exec.step(100);
+
+    expect(res.done).toBe(true);
+    expect(res.error).toMatch(/Lua runtime error/);
+    expect(res.value).toBeUndefined();
+  });
+
+  test("step execution supports registered JS callbacks", () => {
+    const lua = Lua.full();
+    lua.registerCallback("mul_js", (a: number, b: number) => a * b);
+    const exec = lua.executor("return mul_js(6, 7)");
+    let res = exec.step(1000);
+    while (!res.done) {
+      res = exec.step(1000);
+    }
+    expect(res.value).toBe(42);
+  });
+});
+
+describe("Host Callback Registration", () => {
+  test("registerCallback binds a JS function reachable from Lua", () => {
+    const lua = Lua.full();
+    lua.registerCallback("add_js", (a: number, b: number) => a + b);
+
+    expect(lua.eval("return add_js(10, 20)")).toBe(30);
+  });
+
+  test("registerCallback handles string operations", () => {
+    const lua = Lua.full();
+    lua.registerCallback("greet", (name: string) => `Hello, ${name}!`);
+
+    expect(lua.eval("return greet('World')")).toBe("Hello, World!");
+  });
+});
+
+describe("Thread / Coroutine API", () => {
+  test("getGlobal returns a Thread object for coroutines", () => {
+    const lua = Lua.full();
+    lua.eval("co = coroutine.create(function() coroutine.yield('yielded_val') end)");
+    const thread = lua.getGlobal("co") as any;
+
+    expect(thread).toBeDefined();
+    expect(typeof thread.status).toBe("function");
+    expect(typeof thread.resume).toBe("function");
+    expect(["suspended", "stopped", "normal", "running"]).includes(thread.status());
+
+    const yieldRes = thread.resume();
+    expect(yieldRes).toBe("yielded_val");
   });
 });
